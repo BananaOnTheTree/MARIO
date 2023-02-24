@@ -1,0 +1,13 @@
+# depslib dependency file v1.0
+1677259479 source:c:\users\admin\desktop\sdl\mario\main.cpp
+	<iostream>
+	<bits/stdc++.h>
+	<SDL.h>
+	<SDL_image.h>
+
+1677259479 source:c:\users\admin\desktop\mario\main.cpp
+	<iostream>
+	<bits/stdc++.h>
+	<SDL.h>
+	<SDL_image.h>
+
