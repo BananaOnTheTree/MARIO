@@ -246,15 +246,18 @@ void Entity::handleEvent(SDL_Event &e)
                 break;
         }
     }
-    Move();
-    SDL_RenderClear(renderer);
-    render();
-    SDL_RenderPresent(renderer);
+    if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP)
+    {
+        Move();
+        SDL_RenderClear(renderer);
+        render();
+        SDL_RenderPresent(renderer);
+    }
 }
 void Entity::Move()
 {
     eVelX += eAccX;
-    if (abs(eVelX) > 10) eVelX = 10 * abs(eVelX) / eVelX;
+    if (abs(eVelX) > 13) eVelX = 13 * abs(eVelX) / eVelX;
     ePosX += eVelX;
     if (ePosX < 0 || ePosX + eWidth > SCREEN_WIDTH) ePosX -= eVelX;
     /*ePosY += eVelY;
@@ -278,6 +281,8 @@ void keyboard()
 {
     Mario.eLoad("mario/mario_move", MOVEX, 3);
     Mario.eLoad("mario/mario", STAND, 1);
+    Mario.render();
+    SDL_RenderPresent(renderer);
     SDL_Event e;
     bool quit = 0;
     while (!quit)
@@ -290,10 +295,6 @@ void keyboard()
             }
             Mario.handleEvent(e);
         }
-        /*Mario.Move();
-        SDL_RenderClear(renderer);
-        Mario.render();
-        SDL_RenderPresent(renderer);*/
     }
 }
 int main(int argc, char* argv[])
