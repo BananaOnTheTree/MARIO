@@ -209,21 +209,22 @@ void Entity::handleEvent(SDL_Event &e)
     {
         switch(e.key.keysym.sym)
         {
-            /*case SDLK_UP:
-                eVelY -= eVelo;
-                break;
-            case SDLK_DOWN:
-                eVelY += eVelo;
-                break;*/
             case SDLK_a:
-                eAccX -= 2;
-                state = 1;
-                eFlip = LEFT;
+                if (state == STAND)
+                {
+                    eAccX -= 2;
+                    state = MOVEX;
+                    eFlip = LEFT;
+                }
+
                 break;
             case SDLK_d:
-                eAccX += 2;
-                state = 1;
-                eFlip = RIGHT;
+                if (state == STAND)
+                {
+                    eAccX += 2;
+                    state = MOVEX;
+                    eFlip = RIGHT;
+                }
                 break;
         }
     }
@@ -231,17 +232,19 @@ void Entity::handleEvent(SDL_Event &e)
     {
         switch(e.key.keysym.sym)
         {
-            /*case SDLK_UP: eVelY += eVelo; break;
-            case SDLK_DOWN: eVelY -= eVelo; break;*/
             case SDLK_a:
-                //if (!state) break;
-                eAccX = eVelX = 0;
-                state = 0;
+                if (state == MOVEX && eFlip == LEFT)
+                {
+                    eAccX = eVelX = 0;
+                    state = 0;
+                }
                 break;
             case SDLK_d:
-                //if (!state) break;
-                eAccX = eVelX = 0;
-                state = 0;
+                if (state == MOVEX && eFlip == RIGHT)
+                {
+                    eAccX = eVelX = 0;
+                    state = 0;
+                }
                 break;
         }
     }
@@ -253,8 +256,6 @@ void Entity::Move()
     if (abs(eVelX) > 2) eVelX = 2 * abs(eVelX) / eVelX;
     ePosX += eVelX;
     if (ePosX < 0 || ePosX + eWidth > SCREEN_WIDTH) ePosX -= eVelX;
-    /*ePosY += eVelY;
-    if (ePosY < 0 || ePosY + eHeight > SCREEN_HEIGHT) ePosY -= eVelY;*/
 }
 void Entity::render()
 {
