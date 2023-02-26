@@ -18,7 +18,7 @@ const int WALKING_ANIMATION_FRAMES  = 3;
 const int SCALE                     = 1;
 const int STAND                     = 0;
 const int MOVEX                     = 1;
-const double TICK                   = 1.35;
+const int TICK                      = 10;
 const int HITBOX                    = 2;
 const SDL_RendererFlip LEFT         = SDL_FLIP_HORIZONTAL;
 const SDL_RendererFlip RIGHT        = SDL_FLIP_NONE;
@@ -101,8 +101,6 @@ void LTexture::render(int x, int y, SDL_Rect* Clip, SDL_RendererFlip flip)
         renderQuad.w = Clip->w;
         renderQuad.h = Clip->h;
     }
-    renderQuad.w *= SCALE;
-    renderQuad.h *= SCALE;
     SDL_RenderCopyEx(renderer, mTexture, Clip, &renderQuad, 0, NULL, flip);
 }
 bool LTexture::imgLoad(string path)
@@ -142,7 +140,6 @@ int LTexture::getWidth()
 {
     return mWidth;
 }
-LTexture spriteClip[10];
 
 class Entity
 {
@@ -208,7 +205,7 @@ void Entity::eLoad(string path, int type, int num)
 }
 void Entity::handleEvent(SDL_Event &e)
 {
-    if (e.type == SDL_KEYDOWN && e.key.repeat == 0)
+    if (e.type == SDL_KEYDOWN && (e.key.repeat == 0))
     {
         switch(e.key.keysym.sym)
         {
@@ -218,46 +215,42 @@ void Entity::handleEvent(SDL_Event &e)
             case SDLK_DOWN:
                 eVelY += eVelo;
                 break;*/
-            case SDLK_LEFT:
+            case SDLK_a:
                 eAccX -= 2;
                 state = 1;
                 eFlip = LEFT;
                 break;
-            case SDLK_RIGHT:
+            case SDLK_d:
                 eAccX += 2;
                 state = 1;
                 eFlip = RIGHT;
                 break;
         }
     }
-    else if (e.type == SDL_KEYUP && e.key.repeat == 0)
+    else if (e.type == SDL_KEYUP && (e.key.repeat == 0))
     {
         switch(e.key.keysym.sym)
         {
             /*case SDLK_UP: eVelY += eVelo; break;
             case SDLK_DOWN: eVelY -= eVelo; break;*/
-            case SDLK_LEFT:
+            case SDLK_a:
+                //if (!state) break;
                 eAccX = eVelX = 0;
                 state = 0;
                 break;
-            case SDLK_RIGHT:
+            case SDLK_d:
+                //if (!state) break;
                 eAccX = eVelX = 0;
                 state = 0;
                 break;
         }
     }
-    if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP)
-    {
-        Move();
-        SDL_RenderClear(renderer);
-        render();
-        SDL_RenderPresent(renderer);
-    }
+
 }
 void Entity::Move()
 {
     eVelX += eAccX;
-    if (abs(eVelX) > 13) eVelX = 13 * abs(eVelX) / eVelX;
+    if (abs(eVelX) > 2) eVelX = 2 * abs(eVelX) / eVelX;
     ePosX += eVelX;
     if (ePosX < 0 || ePosX + eWidth > SCREEN_WIDTH) ePosX -= eVelX;
     /*ePosY += eVelY;
@@ -267,7 +260,7 @@ void Entity::render()
 {
     if (state)
     {
-        eTexture[MOVEX][int(curFrame[MOVEX] / TICK)].render(ePosX, ePosY, NULL, eFlip);
+        eTexture[MOVEX][curFrame[MOVEX] / TICK].render(ePosX, ePosY, NULL, eFlip);
         curFrame[MOVEX]++;
         if (curFrame[MOVEX] / TICK >= numFrame[MOVEX]) curFrame[MOVEX] = 0;
     }
@@ -295,6 +288,10 @@ void keyboard()
             }
             Mario.handleEvent(e);
         }
+        Mario.Move();
+        SDL_RenderClear(renderer);
+        Mario.render();
+        SDL_RenderPresent(renderer);
     }
 }
 int main(int argc, char* argv[])
