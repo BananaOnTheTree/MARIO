@@ -17,13 +17,15 @@ const string WINDOW_TITLE           = "Mario";
 const int WALKING_ANIMATION_FRAMES  = 3;
 const int SCALE                     = 1;
 const int STAND                     = 0;
-const int MOVEX                     = 1;
+const int MOVE                      = 1;
 const int TICK                      = 10;
 const int HITBOX                    = 2;
+const double GRAVITY                = 0.1983;
 const SDL_RendererFlip LEFT         = SDL_FLIP_HORIZONTAL;
 const SDL_RendererFlip RIGHT        = SDL_FLIP_NONE;
 SDL_Window* window;
 SDL_Renderer* renderer;
+int GROUND_LEVEL;
 void initSDL()
 {
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) logSDLError(std::cout, "SDL_Init", true);
@@ -60,6 +62,12 @@ void waitUntilExit()
         SDL_Delay(50);
     }
 }
+//==========================================================================//
+//==========================================================================//
+// ================================Texture==================================//
+//==========================================================================//
+//==========================================================================//
+
 class LTexture
 {
     public:
@@ -141,6 +149,96 @@ int LTexture::getWidth()
     return mWidth;
 }
 
+
+//==========================================================================//
+//==========================================================================//
+// =================================Timer===================================//
+//==========================================================================//
+//==========================================================================//
+class LTimer
+{
+    public:
+        LTimer();
+        void start();
+        void stop();
+        void pause();
+        void unpause();
+        Uint32 getTicks();
+        bool isStarted();
+        bool isPaused();
+    private:
+        Uint32 mStartTicks;
+        Uint32 mPausedTicks;
+        bool mPaused;
+        bool mStarted;
+};
+LTimer::LTimer()
+{
+    mStartTicks = 0;
+    mPausedTicks = 0;
+    mStarted = mPaused = false;
+}
+void LTimer::start()
+{
+    mStarted = true;
+    mPaused = false;
+    mStartTicks = SDL_GetTicks();
+    mPausedTicks = 0;
+}
+void LTimer::stop()
+{
+    mStarted = false;
+    mPaused = false;
+    mStartTicks = 0;
+    mPausedTicks = 0;
+}
+void LTimer::pause()
+{
+    if (mStarted && !mPaused)
+    {
+        mPaused = true;
+        mPausedTicks = SDL_GetTicks() - mStartTicks;
+        mStartTicks = 0;
+    }
+}
+void LTimer::unpause()
+{
+    if (mStarted && mPaused)
+    {
+        mPaused = false;
+        mStartTicks = SDL_GetTicks() - mPausedTicks;
+        mPausedTicks = 0;
+    }
+}
+Uint32 LTimer::getTicks()
+{
+    Uint32 time = 0;
+    if (mStarted)
+    {
+        if (mPaused)
+        {
+            time = mPausedTicks;
+        }
+        else
+        {
+            time = SDL_GetTicks() - mStartTicks;
+        }
+    }
+    return time;
+}
+bool LTimer::isStarted()
+{
+    return mStarted;
+}
+bool LTimer::isPaused()
+{
+    return mPaused;
+}
+//==========================================================================//
+//==========================================================================//
+// ================================Entity===================================//
+//==========================================================================//
+//==========================================================================//
 class Entity
 {
     public:
@@ -154,20 +252,25 @@ class Entity
         void Move();
         void render();
     private:
-        int ePosX, ePosY;
-        int eVelX, eVelY, eAccX, eAccY;
+        double ePosX, ePosY;
+        double eVelX, eVelY, eAccX;
         int eWidth, eHeight;
         int numFrame[10], curFrame[10];
-        int state;
+        int stateY, holdLeft, holdRight;
+        LTimer eTime;
+        bool Falling;
         SDL_RendererFlip eFlip;
         LTexture eTexture[10][10];
 };
 Entity::Entity()
 {
     eVelX = eVelY = 0;
-    eAccX = eAccY = 0;
+    eAccX = 0;
     ePosX = 0; ePosY = 0;
-    eWidth = eHeight = state = 0;
+    eWidth = eHeight = 0;
+    eTime = LTimer();
+    Falling = 0;
+    holdLeft = holdRight = stateY = STAND;
     eFlip = RIGHT;
     for (int i = 0; i < 10; i++)
     {
@@ -210,20 +313,29 @@ void Entity::handleEvent(SDL_Event &e)
         switch(e.key.keysym.sym)
         {
             case SDLK_a:
-                if (state == STAND)
+                holdLeft = 1;
+                if (!holdRight)
                 {
-                    eAccX -= 2;
-                    state = MOVEX;
+                    eAccX -= 4;
                     eFlip = LEFT;
                 }
 
                 break;
             case SDLK_d:
-                if (state == STAND)
+                holdRight = 1;
+                if (!holdLeft)
                 {
-                    eAccX += 2;
-                    state = MOVEX;
+                    eAccX += 4;
                     eFlip = RIGHT;
+                }
+                break;
+            case SDLK_SPACE:
+                if (ePosY == GROUND_LEVEL)
+                {
+                    Falling = 0;
+                    eVelY = -9;
+                    stateY = MOVE;
+                    eTime.start();
                 }
                 break;
         }
@@ -233,17 +345,33 @@ void Entity::handleEvent(SDL_Event &e)
         switch(e.key.keysym.sym)
         {
             case SDLK_a:
-                if (state == MOVEX && eFlip == LEFT)
+                holdLeft = 0;
+                if (!holdRight) eAccX = eVelX = 0;
+                else
                 {
-                    eAccX = eVelX = 0;
-                    state = 0;
+                    eAccX *= -1;
+                    eVelX *= -1;
+                    eFlip = RIGHT;
                 }
                 break;
             case SDLK_d:
-                if (state == MOVEX && eFlip == RIGHT)
+                holdRight = 0;
+                if (!holdLeft) eAccX = eVelX = 0;
+                else
                 {
-                    eAccX = eVelX = 0;
-                    state = 0;
+                    eAccX *= -1;
+                    eVelX *= -1;
+                    eFlip = LEFT;
+                }
+                break;
+            case SDLK_SPACE:
+                if (eVelY < 0)
+                {
+                    eVelY = 1;
+                    eTime.pause();
+                    Falling = 1;
+                    stateY = MOVE;
+                    eTime.start();
                 }
                 break;
         }
@@ -252,18 +380,28 @@ void Entity::handleEvent(SDL_Event &e)
 }
 void Entity::Move()
 {
+    //Uint32 TIME = eTime.getTicks();
+    eVelY += GRAVITY;
+    ePosY += eVelY;
+    if (ePosY >= GROUND_LEVEL)
+    {
+        ePosY = GROUND_LEVEL;
+        eVelY = 0;
+        Falling = 0;
+        eTime.pause();
+    }
     eVelX += eAccX;
-    if (abs(eVelX) > 2) eVelX = 2 * abs(eVelX) / eVelX;
+    if (abs(eVelX) > 4) eVelX = 4 * abs(eVelX) / eVelX;
     ePosX += eVelX;
     if (ePosX < 0 || ePosX + eWidth > SCREEN_WIDTH) ePosX -= eVelX;
 }
 void Entity::render()
 {
-    if (state)
+    if (holdLeft || holdRight)
     {
-        eTexture[MOVEX][curFrame[MOVEX] / TICK].render(ePosX, ePosY, NULL, eFlip);
-        curFrame[MOVEX]++;
-        if (curFrame[MOVEX] / TICK >= numFrame[MOVEX]) curFrame[MOVEX] = 0;
+        eTexture[MOVE][curFrame[MOVE] / TICK].render(ePosX, ePosY, NULL, eFlip);
+        curFrame[MOVE]++;
+        if (curFrame[MOVE] / TICK >= numFrame[MOVE]) curFrame[MOVE] = 0;
     }
     else
     {
@@ -273,9 +411,10 @@ void Entity::render()
 Entity Mario;
 void keyboard()
 {
-    Mario.eLoad("mario/mario_move", MOVEX, 3);
+    Mario.eLoad("mario/mario_move", MOVE, 3);
     Mario.eLoad("mario/mario", STAND, 1);
     Mario.render();
+    GROUND_LEVEL = SCREEN_HEIGHT / 2;
     SDL_RenderPresent(renderer);
     SDL_Event e;
     bool quit = 0;
