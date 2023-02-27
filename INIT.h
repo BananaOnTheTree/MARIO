@@ -24,6 +24,8 @@ void initSDL()
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
     SDL_RenderSetLogicalSize(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
 
+    //SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
+    //SDL_RenderFillRect(renderer, NULL);
 }
 void quitSDL()
 {

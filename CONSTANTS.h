@@ -9,7 +9,6 @@ const int SCALE                     = 1;
 const int STAND                     = 0;
 const int MOVE                      = 1;
 const int JUMP                      = 2;
-const int TICK                      = 10;
 const int HITBOX                    = 2;
 const int STOP                      = 3;
 const double XLIMIT                 = 1.8;

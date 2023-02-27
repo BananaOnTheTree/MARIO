@@ -197,10 +197,13 @@ class Entity
         void Move();
         void Stop();
         void render();
-    private:
+        double getPosX();
+        double getPosY();
+        int getWidth();
+        int getHeight();
         double ePosX, ePosY;
-        double eVelX, eVelY, eAccX;
-        int eWidth, eHeight;
+        double eVelX, eVelY, eAccX, eAccY;
+        int eWidth, eHeight, TICK;
         int numFrame[10], curFrame[10];
         int stateY, holdLeft, holdRight;
         LTimer eTime;
@@ -215,6 +218,8 @@ Entity::Entity()
     eAccX = 0;
     ePosX = 0; ePosY = 0;
     eWidth = eHeight = 0;
+    eAccY = GRAVITY;
+    TICK = 0;
     eTime = LTimer();
     Falling = 0;
     holdLeft = holdRight = stateY = STAND;
@@ -229,6 +234,22 @@ Entity::Entity()
 Entity::~Entity()
 {
     free();
+}
+double Entity::getPosX()
+{
+    return ePosX;
+}
+double Entity::getPosY()
+{
+    return ePosY;
+}
+int Entity::getWidth()
+{
+    return eWidth;
+}
+int Entity::getHeight()
+{
+    return eHeight;
 }
 void Entity::free()
 {
@@ -252,7 +273,6 @@ void Entity::eLoad(string path, int type, int num)
     }
     eWidth = eTexture[type][0].getWidth() + HITBOX;
     eHeight = eTexture[type][0].getHeight() + HITBOX;
-    ePosY = SCREEN_HEIGHT / 2;
 }
 void Entity::eMusic(string path, int type)
 {
@@ -281,7 +301,7 @@ void Entity::handleEvent(SDL_Event &e)
                 eFlip = RIGHT;
                 break;
             case SDLK_SPACE:
-                if (ePosY == GROUND_LEVEL)
+                if (ePosY == GROUND_LEVEL - eHeight)
                 {
                     Mix_PlayChannel(-1, eChunk[JUMP], 0);
                     Falling = 0;
@@ -336,12 +356,22 @@ void Entity::Stop()
     eTime.stop();
     eTime.start();
     Uint32 t;
-    int pre = -1, add = (eFlip == LEFT ? -1 : 1);
+    int pre = -1;
     do
     {
         t = eTime.getTicks();
         SDL_RenderClear(renderer);
-        if ((int)t / 67 != pre) ePosX += add;
+        if ((int)t / 67 != pre)
+        {
+            if (eFlip == LEFT)
+            {
+                if (ePosX >= 1) ePosX--;
+            }
+            else
+            {
+                if (ePosX + eWidth + 1 <= SCREEN_WIDTH) ePosX++;
+            }
+        }
         eTexture[STOP][curFrame[STOP]].render(ePosX, ePosY, NULL, eFlip);
         SDL_RenderPresent(renderer);
     }
@@ -349,11 +379,11 @@ void Entity::Stop()
 }
 void Entity::Move()
 {
-    eVelY += GRAVITY;
+    eVelY += eAccY;
     ePosY += eVelY;
-    if (ePosY >= GROUND_LEVEL)
+    if (ePosY >= GROUND_LEVEL - eHeight)
     {
-        ePosY = GROUND_LEVEL;
+        ePosY = GROUND_LEVEL - eHeight;
         eVelY = 0;
         stateY = 0;
         Falling = 0;
@@ -381,16 +411,48 @@ void Entity::render()
         eTexture[STAND][curFrame[STAND]].render(ePosX, ePosY, NULL, eFlip);
     }
 }
-Entity Mario;
-void keyboard()
+bool collision(Entity A, Entity B)
 {
-    Mario.eLoad("mario/mario_move", MOVE, 3);
-    Mario.eLoad("mario/mario", STAND, 1);
-    Mario.eLoad("mario/mario_jump", JUMP, 1);
-    Mario.eLoad("mario/mario_st", STOP, 1);
+    double leftX_A, leftX_B, rightX_A, rightX_B;
+    double upY_A, upY_B, downY_A, downY_B;
+    leftX_A = A.getPosX();  leftX_B = B.getPosX();
+    upY_A = A.getPosY();    upY_B = B.getPosY();
+    rightX_A = leftX_A + A.getWidth();
+    rightX_B = leftX_B + B.getWidth();
+    downY_A = upY_A + A.getHeight();
+    downY_B = upY_B + B.getHeight();
+    if (leftX_B >= rightX_A) return 0;
+    if (leftX_A >= rightX_B) return 0;
+    if (upY_A >= downY_B) return 0;
+    if (upY_B >= downY_A) return 0;
+    return 1;
+}
+Entity Mario, Coin;
+void loadMario()
+{
+    Mario.eLoad("images/mario/mario_move", MOVE, 3);
+    Mario.eLoad("images/mario/mario_jump", JUMP, 1);
+    Mario.eLoad("images/mario/mario_st", STOP, 1);
+    Mario.eLoad("images/mario/mario", STAND, 1);
     Mario.eMusic("sounds/jump.wav", JUMP);
+    Mario.ePosY = SCREEN_HEIGHT / 2 - Mario.eHeight;
+    Mario.TICK = 10;
     Mario.render();
-    GROUND_LEVEL = SCREEN_HEIGHT / 2;
+}
+void loadCoin()
+{
+    Coin.eLoad("images/coin_an", MOVE, 4);
+    Coin.TICK = 50;
+    Coin.ePosX = SCREEN_WIDTH / 2;
+    Coin.ePosY = SCREEN_HEIGHT / 2 - Coin.eHeight;
+    Coin.eAccY = 0.155;
+    Coin.holdLeft = 1;
+    Coin.render();
+}
+void MarioTest()
+{
+    loadMario();
+    loadCoin();
     SDL_RenderPresent(renderer);
     SDL_Event e;
     bool quit = 0;
@@ -405,16 +467,23 @@ void keyboard()
             Mario.handleEvent(e);
         }
         Mario.Move();
+        Coin.Move();
         SDL_RenderClear(renderer);
         Mario.render();
+        Coin.render();
         SDL_RenderPresent(renderer);
+        if (collision(Mario, Coin))
+        {
+            Coin.eVelY = -5.5;
+        }
     }
 }
 int main(int argc, char* argv[])
 {
     Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024);
+    GROUND_LEVEL = SCREEN_HEIGHT / 2;
     initSDL();
-    keyboard();
+    MarioTest();
     quitSDL();
     return 0;
 }
