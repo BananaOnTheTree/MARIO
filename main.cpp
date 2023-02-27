@@ -1,70 +1,11 @@
-#include <iostream>
 #include <bits/stdc++.h>
 #include <SDL.h>
 #include <SDL_image.h>
+#include "CONSTANTS.h"
+#include "INIT.h"
+#include <SDL_mixer.h>
 using namespace std;
-void logSDLError(std::ostream& os, const std::string &msg, bool fatal)
-{
-    os << msg << " Error: " << SDL_GetError() << std::endl;
-    if (fatal) {
-        SDL_Quit();
-        exit(1);
-    }
-}
-const int SCREEN_WIDTH              = 1280;
-const int SCREEN_HEIGHT             = 720;
-const string WINDOW_TITLE           = "Mario";
-const int WALKING_ANIMATION_FRAMES  = 3;
-const int SCALE                     = 1;
-const int STAND                     = 0;
-const int MOVE                      = 1;
-const int JUMP                      = 2;
-const int TICK                      = 10;
-const int HITBOX                    = 2;
-const int STOP                      = 3;
-const double XLIMIT                 = 2.3;
-const double GRAVITY                = 0.035;
-const SDL_RendererFlip LEFT         = SDL_FLIP_HORIZONTAL;
-const SDL_RendererFlip RIGHT        = SDL_FLIP_NONE;
-SDL_Window* window;
-SDL_Renderer* renderer;
 int GROUND_LEVEL;
-void initSDL()
-{
-    if (SDL_Init(SDL_INIT_EVERYTHING) != 0) logSDLError(std::cout, "SDL_Init", true);
-    window = SDL_CreateWindow(WINDOW_TITLE.c_str(), SDL_WINDOWPOS_CENTERED,
-                              SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-    if (window == nullptr) logSDLError(std::cout, "CreateWindow", true);
-
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-
-    if (renderer == nullptr) logSDLError(std::cout, "CreateRenderer", true);
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
-    SDL_RenderSetLogicalSize(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
-
-}
-void quitSDL()
-{
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-}
-void waitUntilExit()
-{
-    SDL_Event event;
-    while (true)
-    {
-        while (SDL_WaitEvent(&event))
-        {
-            if (event.type == SDL_QUIT) return;
-            if (event.type == SDL_KEYDOWN)
-            {
-                return;
-            }
-        }
-        SDL_Delay(50);
-    }
-}
 //==========================================================================//
 //==========================================================================//
 // ================================Texture==================================//
@@ -250,6 +191,7 @@ class Entity
         ~Entity();
         void free();
         void eLoad(string path, int type, int num);
+        void eMusic(string path, int type);
         void eAnimation();
         void handleEvent(SDL_Event &e);
         void Move();
@@ -262,6 +204,7 @@ class Entity
         int numFrame[10], curFrame[10];
         int stateY, holdLeft, holdRight;
         LTimer eTime;
+        Mix_Chunk *eChunk[10];
         bool Falling;
         SDL_RendererFlip eFlip;
         LTexture eTexture[10][10];
@@ -280,6 +223,7 @@ Entity::Entity()
     {
         for (int j = 0; j < 10; j++)eTexture[i][j] = LTexture();
         numFrame[i] = curFrame[i] = 0;
+        eChunk[i] = NULL;
     }
 }
 Entity::~Entity()
@@ -310,6 +254,14 @@ void Entity::eLoad(string path, int type, int num)
     eHeight = eTexture[type][0].getHeight() + HITBOX;
     ePosY = SCREEN_HEIGHT / 2;
 }
+void Entity::eMusic(string path, int type)
+{
+    eChunk[type] = Mix_LoadWAV(path.c_str());
+    if (eChunk[type] == NULL)
+    {
+        logSDLError(cout, "Cannot load sound file: " + path, 1);
+    }
+}
 void Entity::handleEvent(SDL_Event &e)
 {
     if (e.type == SDL_KEYDOWN && (e.key.repeat == 0))
@@ -331,8 +283,9 @@ void Entity::handleEvent(SDL_Event &e)
             case SDLK_SPACE:
                 if (ePosY == GROUND_LEVEL)
                 {
+                    Mix_PlayChannel(-1, eChunk[JUMP], 0);
                     Falling = 0;
-                    eVelY = -3.5;
+                    eVelY = -3.2;
                     stateY = MOVE;
                     eTime.start();
                 }
@@ -368,7 +321,7 @@ void Entity::handleEvent(SDL_Event &e)
             case SDLK_SPACE:
                 if (eVelY < 0)
                 {
-                    eVelY = 1;
+                    eVelY = 0.75;
                     eTime.pause();
                     Falling = 1;
                     stateY = MOVE;
@@ -392,7 +345,7 @@ void Entity::Stop()
         eTexture[STOP][curFrame[STOP]].render(ePosX, ePosY, NULL, eFlip);
         SDL_RenderPresent(renderer);
     }
-    while (t <= 150);
+    while (t <= 140);
 }
 void Entity::Move()
 {
@@ -435,6 +388,7 @@ void keyboard()
     Mario.eLoad("mario/mario", STAND, 1);
     Mario.eLoad("mario/mario_jump", JUMP, 1);
     Mario.eLoad("mario/mario_st", STOP, 1);
+    Mario.eMusic("sounds/jump.wav", JUMP);
     Mario.render();
     GROUND_LEVEL = SCREEN_HEIGHT / 2;
     SDL_RenderPresent(renderer);
@@ -458,6 +412,7 @@ void keyboard()
 }
 int main(int argc, char* argv[])
 {
+    Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024);
     initSDL();
     keyboard();
     quitSDL();

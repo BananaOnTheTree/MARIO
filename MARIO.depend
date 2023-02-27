@@ -5,9 +5,15 @@
 	<SDL.h>
 	<SDL_image.h>
 
-1677491838 source:c:\users\admin\desktop\mario\main.cpp
-	<iostream>
+1677499227 source:c:\users\admin\desktop\mario\main.cpp
 	<bits/stdc++.h>
 	<SDL.h>
 	<SDL_image.h>
+	"CONSTANTS.h"
+	"INIT.h"
+	<SDL_mixer.h>
+
+1677497510 c:\users\admin\desktop\mario\constants.h
+
+1677497941 c:\users\admin\desktop\mario\init.h
 
