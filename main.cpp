@@ -18,9 +18,12 @@ const int WALKING_ANIMATION_FRAMES  = 3;
 const int SCALE                     = 1;
 const int STAND                     = 0;
 const int MOVE                      = 1;
+const int JUMP                      = 2;
 const int TICK                      = 10;
 const int HITBOX                    = 2;
-const double GRAVITY                = 0.1983;
+const int STOP                      = 3;
+const double XLIMIT                 = 2.3;
+const double GRAVITY                = 0.035;
 const SDL_RendererFlip LEFT         = SDL_FLIP_HORIZONTAL;
 const SDL_RendererFlip RIGHT        = SDL_FLIP_NONE;
 SDL_Window* window;
@@ -250,6 +253,7 @@ class Entity
         void eAnimation();
         void handleEvent(SDL_Event &e);
         void Move();
+        void Stop();
         void render();
     private:
         double ePosX, ePosY;
@@ -314,26 +318,21 @@ void Entity::handleEvent(SDL_Event &e)
         {
             case SDLK_a:
                 holdLeft = 1;
-                if (!holdRight)
-                {
-                    eAccX -= 4;
-                    eFlip = LEFT;
-                }
-
+                if (holdRight) break;
+                eAccX -= 0.05;
+                eFlip = LEFT;
                 break;
             case SDLK_d:
                 holdRight = 1;
-                if (!holdLeft)
-                {
-                    eAccX += 4;
-                    eFlip = RIGHT;
-                }
+                if (holdLeft) break;
+                eAccX += 0.05;
+                eFlip = RIGHT;
                 break;
             case SDLK_SPACE:
                 if (ePosY == GROUND_LEVEL)
                 {
                     Falling = 0;
-                    eVelY = -9;
+                    eVelY = -3.5;
                     stateY = MOVE;
                     eTime.start();
                 }
@@ -347,8 +346,9 @@ void Entity::handleEvent(SDL_Event &e)
             case SDLK_a:
                 holdLeft = 0;
                 if (!holdRight) eAccX = eVelX = 0;
-                else
+                else if (eFlip == LEFT)
                 {
+                    if (abs(abs(eVelX) - XLIMIT) < 0.0001 && !stateY) Stop();
                     eAccX *= -1;
                     eVelX *= -1;
                     eFlip = RIGHT;
@@ -357,8 +357,9 @@ void Entity::handleEvent(SDL_Event &e)
             case SDLK_d:
                 holdRight = 0;
                 if (!holdLeft) eAccX = eVelX = 0;
-                else
+                else if (eFlip == RIGHT)
                 {
+                    if (abs(abs(eVelX) - XLIMIT) < 0.0001 && !stateY) Stop();
                     eAccX *= -1;
                     eVelX *= -1;
                     eFlip = LEFT;
@@ -376,28 +377,47 @@ void Entity::handleEvent(SDL_Event &e)
                 break;
         }
     }
-
+}
+void Entity::Stop()
+{
+    eTime.stop();
+    eTime.start();
+    Uint32 t;
+    int pre = -1, add = (eFlip == LEFT ? -1 : 1);
+    do
+    {
+        t = eTime.getTicks();
+        SDL_RenderClear(renderer);
+        if ((int)t / 67 != pre) ePosX += add;
+        eTexture[STOP][curFrame[STOP]].render(ePosX, ePosY, NULL, eFlip);
+        SDL_RenderPresent(renderer);
+    }
+    while (t <= 150);
 }
 void Entity::Move()
 {
-    //Uint32 TIME = eTime.getTicks();
     eVelY += GRAVITY;
     ePosY += eVelY;
     if (ePosY >= GROUND_LEVEL)
     {
         ePosY = GROUND_LEVEL;
         eVelY = 0;
+        stateY = 0;
         Falling = 0;
         eTime.pause();
     }
     eVelX += eAccX;
-    if (abs(eVelX) > 4) eVelX = 4 * abs(eVelX) / eVelX;
+    if (abs(eVelX) > XLIMIT) eVelX = XLIMIT * abs(eVelX) / eVelX;
     ePosX += eVelX;
     if (ePosX < 0 || ePosX + eWidth > SCREEN_WIDTH) ePosX -= eVelX;
 }
 void Entity::render()
 {
-    if (holdLeft || holdRight)
+    if (stateY)
+    {
+        eTexture[JUMP][curFrame[JUMP]].render(ePosX, ePosY, NULL, eFlip);
+    }
+    else if (holdLeft || holdRight)
     {
         eTexture[MOVE][curFrame[MOVE] / TICK].render(ePosX, ePosY, NULL, eFlip);
         curFrame[MOVE]++;
@@ -413,6 +433,8 @@ void keyboard()
 {
     Mario.eLoad("mario/mario_move", MOVE, 3);
     Mario.eLoad("mario/mario", STAND, 1);
+    Mario.eLoad("mario/mario_jump", JUMP, 1);
+    Mario.eLoad("mario/mario_st", STOP, 1);
     Mario.render();
     GROUND_LEVEL = SCREEN_HEIGHT / 2;
     SDL_RenderPresent(renderer);
@@ -438,7 +460,6 @@ int main(int argc, char* argv[])
 {
     initSDL();
     keyboard();
-    //waitUntilExit();
     quitSDL();
     return 0;
 }
