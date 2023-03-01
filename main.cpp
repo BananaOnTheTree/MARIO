@@ -19,7 +19,7 @@ class LTexture
         ~LTexture();
         bool imgLoad(string path);
         void free();
-        void render(int x, int y, SDL_Rect *Clip = NULL, SDL_RendererFlip flip = SDL_FLIP_NONE, int Fading = -1);
+        void render(int x, int y, SDL_Rect *Clip = NULL, SDL_RendererFlip flip = SDL_FLIP_NONE);
         int getWidth();
         int getHeight();
     private:
@@ -45,7 +45,7 @@ void LTexture::free()
         mWidth = mHeight = 0;
     }
 }
-void LTexture::render(int x, int y, SDL_Rect* Clip, SDL_RendererFlip flip, int Fading)
+void LTexture::render(int x, int y, SDL_Rect* Clip, SDL_RendererFlip flip)
 {
     SDL_Rect renderQuad = {x, y, mWidth, mHeight};
     if (Clip)
@@ -53,7 +53,6 @@ void LTexture::render(int x, int y, SDL_Rect* Clip, SDL_RendererFlip flip, int F
         renderQuad.w = Clip->w;
         renderQuad.h = Clip->h;
     }
-    if (Fading != -1) SDL_SetTextureAlphaMod(mTexture, Fading);
     SDL_RenderCopyEx(renderer, mTexture, Clip, &renderQuad, 0, NULL, flip);
 }
 bool LTexture::imgLoad(string path)
@@ -196,31 +195,33 @@ class Entity
         void eAnimation();
         void handleEvent(SDL_Event &e);
         void Move();
+        void Stop();
         void render();
         double getPosX();
         double getPosY();
         int getWidth();
         int getHeight();
-
-
-        double ePosX, ePosY, eVelX, eVelY, eAccX, eAccY;
-        int eWidth, eHeight, TICK, pre, Fading;
+        double ePosX, ePosY;
+        double eVelX, eVelY, eAccX, eAccY;
+        int eWidth, eHeight, TICK;
         int numFrame[10], curFrame[10];
         int stateY, holdLeft, holdRight;
         LTimer eTime;
         Mix_Chunk *eChunk[10];
-        bool Falling, Stopping;
+        bool Falling;
         SDL_RendererFlip eFlip;
         LTexture eTexture[10][10];
 };
 Entity::Entity()
 {
-    eVelX = eVelY = eAccX = ePosX = 0; ePosY = 0;
+    eVelX = eVelY = 0;
+    eAccX = 0;
+    ePosX = 0; ePosY = 0;
     eWidth = eHeight = 0;
     eAccY = GRAVITY;
-    pre = -1; TICK = 0;
+    TICK = 0;
     eTime = LTimer();
-    Falling = 0, Fading = -1;
+    Falling = 0;
     holdLeft = holdRight = stateY = STAND;
     eFlip = RIGHT;
     for (int i = 0; i < 10; i++)
@@ -304,7 +305,7 @@ void Entity::handleEvent(SDL_Event &e)
                 {
                     Mix_PlayChannel(-1, eChunk[JUMP], 0);
                     Falling = 0;
-                    eVelY = -2.9;
+                    eVelY = -3.2;
                     stateY = MOVE;
                     eTime.start();
                 }
@@ -320,13 +321,7 @@ void Entity::handleEvent(SDL_Event &e)
                 if (!holdRight) eAccX = eVelX = 0;
                 else if (eFlip == LEFT)
                 {
-                    if (abs(abs(eVelX) - XLIMIT) < 0.0001 && !stateY)
-                    {
-                        pre = -1;
-                        eTime.stop();
-                        eTime.start();
-                        Stopping = 1;
-                    }
+                    if (abs(abs(eVelX) - XLIMIT) < 0.0001 && !stateY) Stop();
                     eAccX *= -1;
                     eVelX *= -1;
                     eFlip = RIGHT;
@@ -337,13 +332,7 @@ void Entity::handleEvent(SDL_Event &e)
                 if (!holdLeft) eAccX = eVelX = 0;
                 else if (eFlip == RIGHT)
                 {
-                    if (abs(abs(eVelX) - XLIMIT) < 0.0001 && !stateY)
-                    {
-                        pre = -1;
-                        eTime.stop();
-                        eTime.start();
-                        Stopping = 1;
-                    }
+                    if (abs(abs(eVelX) - XLIMIT) < 0.0001 && !stateY) Stop();
                     eAccX *= -1;
                     eVelX *= -1;
                     eFlip = LEFT;
@@ -362,26 +351,34 @@ void Entity::handleEvent(SDL_Event &e)
         }
     }
 }
-void Entity::Move()
+void Entity::Stop()
 {
-    if (Stopping)
+    eTime.stop();
+    eTime.start();
+    Uint32 t;
+    int pre = -1;
+    do
     {
-        Uint32 TIME = eTime.getTicks();
-        if (TIME > 130) {Stopping = 0; return;}
-        if ((int)TIME / 20 != pre)
+        t = eTime.getTicks();
+        SDL_RenderClear(renderer);
+        if ((int)t / 67 != pre)
         {
-            pre = (int)TIME / 20;
-            if (eFlip == LEFT) {
-                ePosX += 3;
-                if (ePosX + eWidth > SCREEN_WIDTH) ePosX -= 3;
+            if (eFlip == LEFT)
+            {
+                if (ePosX >= 1) ePosX--;
             }
-            else {
-                ePosX -= 3;
-                if (ePosX < 0) ePosX += 3;
+            else
+            {
+                if (ePosX + eWidth + 1 <= SCREEN_WIDTH) ePosX++;
             }
         }
-        return;
+        eTexture[STOP][curFrame[STOP]].render(ePosX, ePosY, NULL, eFlip);
+        SDL_RenderPresent(renderer);
     }
+    while (t <= 140);
+}
+void Entity::Move()
+{
     eVelY += eAccY;
     ePosY += eVelY;
     if (ePosY >= GROUND_LEVEL - eHeight)
@@ -399,32 +396,20 @@ void Entity::Move()
 }
 void Entity::render()
 {
-    int fade = -1;
-    if (Fading > -1)
+    if (stateY)
     {
-        Fading = max(Fading - 3, 0);
-        fade = Fading;
-    }
-    if (Stopping)
-    {
-        SDL_RendererFlip curFlip = (eFlip == LEFT ? RIGHT : LEFT);
-        eTexture[STOP][curFrame[STOP]].render(ePosX, ePosY, NULL, curFlip, fade);
-    }
-    else if (stateY)
-    {
-        eTexture[JUMP][curFrame[JUMP]].render(ePosX, ePosY, NULL, eFlip, fade);
+        eTexture[JUMP][curFrame[JUMP]].render(ePosX, ePosY, NULL, eFlip);
     }
     else if (holdLeft || holdRight)
     {
-        eTexture[MOVE][curFrame[MOVE] / TICK].render(ePosX, ePosY, NULL, eFlip, fade);
+        eTexture[MOVE][curFrame[MOVE] / TICK].render(ePosX, ePosY, NULL, eFlip);
         curFrame[MOVE]++;
         if (curFrame[MOVE] / TICK >= numFrame[MOVE]) curFrame[MOVE] = 0;
     }
     else
     {
-        eTexture[STAND][curFrame[STAND]].render(ePosX, ePosY, NULL, eFlip, fade);
+        eTexture[STAND][curFrame[STAND]].render(ePosX, ePosY, NULL, eFlip);
     }
-    if (!fade) free();
 }
 bool collision(Entity A, Entity B)
 {
@@ -457,7 +442,6 @@ void loadMario()
 void loadCoin()
 {
     Coin.eLoad("images/coin_an", MOVE, 4);
-    Coin.eMusic("sounds/coin.wav", JUMP);
     Coin.TICK = 50;
     Coin.ePosX = SCREEN_WIDTH / 2;
     Coin.ePosY = SCREEN_HEIGHT / 2 - Coin.eHeight;
@@ -467,7 +451,6 @@ void loadCoin()
 }
 void MarioTest()
 {
-    bool collided = 0;
     loadMario();
     loadCoin();
     SDL_RenderPresent(renderer);
@@ -489,18 +472,15 @@ void MarioTest()
         Mario.render();
         Coin.render();
         SDL_RenderPresent(renderer);
-        if (collision(Mario, Coin) && !collided)
+        if (collision(Mario, Coin))
         {
-            collided = 1;
             Coin.eVelY = -5.5;
-            Coin.Fading = 255;
-            Mix_PlayChannel(-1, Coin.eChunk[JUMP], 0);
         }
     }
 }
 int main(int argc, char* argv[])
 {
-    Mix_OpenAudio(MIX_DEFAULT_FREQUENCY, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 1024);
+    Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024);
     GROUND_LEVEL = SCREEN_HEIGHT / 2;
     initSDL();
     MarioTest();
