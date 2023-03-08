@@ -4,8 +4,13 @@
 #include "CONSTANTS.h"
 #include "INIT.h"
 #include <SDL_mixer.h>
+#define Coin(i) Object[COIN + i]
+#define Goombas(i) Object[GOOMB + i]
+#define Terrain(i) Object[TERRAIN + i]
 using namespace std;
 int GROUND_LEVEL;
+SDL_Rect camera = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
+SDL_Rect renArea = {0, 0, int(SCREEN_WIDTH * 1.1), int(SCREEN_HEIGHT * 1.1)};
 //==========================================================================//
 //==========================================================================//
 // ================================Texture==================================//
@@ -47,7 +52,7 @@ void LTexture::free()
 }
 void LTexture::render(int x, int y, SDL_Rect* Clip, SDL_RendererFlip flip, int Fading)
 {
-    SDL_Rect renderQuad = {x, y, mWidth, mHeight};
+    SDL_Rect renderQuad = {x - camera.x, y - camera.y, mWidth, mHeight};
     if (Clip)
     {
         renderQuad.w = Clip->w;
@@ -193,34 +198,28 @@ class Entity
         void free();
         void eLoad(string path, int type, int num);
         void eMusic(string path, int type);
-        void eAnimation();
         void handleEvent(SDL_Event &e);
         void Move();
         void render();
-        double getPosX();
-        double getPosY();
-        int getWidth();
-        int getHeight();
 
-
-        double ePosX, ePosY, eVelX, eVelY, eAccX, eAccY;
+        double ePosX, ePosY, eVelX, eVelY, eAccX, eAccY, FadeTime;
         int eWidth, eHeight, TICK, pre, Fading;
         int numFrame[10], curFrame[10];
-        int stateY, holdLeft, holdRight;
+        int stateY, holdLeft, holdRight, eType;
         LTimer eTime;
         Mix_Chunk *eChunk[10];
-        bool Falling, Stopping;
+        bool Falling, Stopping, Dead;
         SDL_RendererFlip eFlip;
         LTexture eTexture[10][10];
 };
 Entity::Entity()
 {
-    eVelX = eVelY = eAccX = ePosX = 0; ePosY = 0;
-    eWidth = eHeight = 0;
-    eAccY = GRAVITY;
-    pre = -1; TICK = 0;
+    eVelX = eVelY = eAccX = eAccY = 0;
+    ePosX = ePosY = 0;
+    eWidth = eHeight = FadeTime = 0;
+    pre = -1; TICK = 0; eType = MOB;
     eTime = LTimer();
-    Falling = 0, Fading = -1;
+    Falling = Stopping = 0, Fading = -1; Dead = 0;
     holdLeft = holdRight = stateY = STAND;
     eFlip = RIGHT;
     for (int i = 0; i < 10; i++)
@@ -233,22 +232,6 @@ Entity::Entity()
 Entity::~Entity()
 {
     free();
-}
-double Entity::getPosX()
-{
-    return ePosX;
-}
-double Entity::getPosY()
-{
-    return ePosY;
-}
-int Entity::getWidth()
-{
-    return eWidth;
-}
-int Entity::getHeight()
-{
-    return eHeight;
 }
 void Entity::free()
 {
@@ -288,18 +271,21 @@ void Entity::handleEvent(SDL_Event &e)
         switch(e.key.keysym.sym)
         {
             case SDLK_a:
+                if (Dead) break;
                 holdLeft = 1;
                 if (holdRight) break;
                 eAccX -= 0.05;
                 eFlip = LEFT;
                 break;
             case SDLK_d:
+                if (Dead) break;
                 holdRight = 1;
                 if (holdLeft) break;
                 eAccX += 0.05;
                 eFlip = RIGHT;
                 break;
             case SDLK_SPACE:
+                if (Dead) break;
                 if (ePosY == GROUND_LEVEL - eHeight)
                 {
                     Mix_PlayChannel(-1, eChunk[JUMP], 0);
@@ -364,13 +350,22 @@ void Entity::handleEvent(SDL_Event &e)
 }
 void Entity::Move()
 {
+    if (Dead && eType != COLLECTABLE)
+    {
+        eVelY += 0.1;
+        ePosY += eVelY;
+        if (ePosY > 2 * SCREEN_HEIGHT) ePosY = 2 * SCREEN_HEIGHT;
+        holdLeft = holdRight = 0;
+        stateY = 1;
+        return;
+    }
     if (Stopping)
     {
         Uint32 TIME = eTime.getTicks();
-        if (TIME > 130) {Stopping = 0; return;}
-        if ((int)TIME / 20 != pre)
+        if (TIME > 80) {Stopping = 0; return;}
+        if ((int)TIME / 25 != pre)
         {
-            pre = (int)TIME / 20;
+            pre = (int)TIME / 25;
             if (eFlip == LEFT) {
                 ePosX += 3;
                 if (ePosX + eWidth > SCREEN_WIDTH) ePosX -= 3;
@@ -384,7 +379,7 @@ void Entity::Move()
     }
     eVelY += eAccY;
     ePosY += eVelY;
-    if (ePosY >= GROUND_LEVEL - eHeight)
+    if (ePosY >= GROUND_LEVEL - eHeight && eType != BLOCK)
     {
         ePosY = GROUND_LEVEL - eHeight;
         eVelY = 0;
@@ -395,15 +390,29 @@ void Entity::Move()
     eVelX += eAccX;
     if (abs(eVelX) > XLIMIT) eVelX = XLIMIT * abs(eVelX) / eVelX;
     ePosX += eVelX;
-    if (ePosX < 0 || ePosX + eWidth > SCREEN_WIDTH) ePosX -= eVelX;
+    if (ePosX < 0 || ePosX + eWidth > LEVEL_WIDTH)
+    {
+        ePosX -= eVelX;
+        if (eType == MOB) eVelX *= -1;
+    }
 }
 void Entity::render()
 {
     int fade = -1;
     if (Fading > -1)
     {
-        Fading = max(Fading - 3, 0);
+        Fading = max(Fading - FadeTime, 0.0);
         fade = Fading;
+    }
+    if (!fade)
+    {
+        free();
+        return;
+    }
+    if (Dead && eType != COLLECTABLE)
+    {
+        eTexture[DEAD][curFrame[DEAD]].render(ePosX, ePosY, NULL, LEFT, fade);
+        return;
     }
     if (Stopping)
     {
@@ -424,53 +433,156 @@ void Entity::render()
     {
         eTexture[STAND][curFrame[STAND]].render(ePosX, ePosY, NULL, eFlip, fade);
     }
-    if (!fade) free();
 }
 bool collision(Entity A, Entity B)
 {
     double leftX_A, leftX_B, rightX_A, rightX_B;
     double upY_A, upY_B, downY_A, downY_B;
-    leftX_A = A.getPosX();  leftX_B = B.getPosX();
-    upY_A = A.getPosY();    upY_B = B.getPosY();
-    rightX_A = leftX_A + A.getWidth();
-    rightX_B = leftX_B + B.getWidth();
-    downY_A = upY_A + A.getHeight();
-    downY_B = upY_B + B.getHeight();
+    leftX_A = A.ePosX;  leftX_B = B.ePosX;
+    upY_A = A.ePosY;    upY_B = B.ePosY;
+    rightX_A = leftX_A + A.eWidth;
+    rightX_B = leftX_B + B.eWidth;
+    downY_A = upY_A + A.eHeight;
+    downY_B = upY_B + B.eHeight;
     if (leftX_B >= rightX_A) return 0;
     if (leftX_A >= rightX_B) return 0;
     if (upY_A >= downY_B) return 0;
     if (upY_B >= downY_A) return 0;
     return 1;
 }
-Entity Mario, Coin;
+Entity Object[MAX_OBJECT], Mario;
+vector <int> renPos[10000];
 void loadMario()
 {
+    Mario = Entity();
     Mario.eLoad("images/mario/mario_move", MOVE, 3);
     Mario.eLoad("images/mario/mario_jump", JUMP, 1);
+    Mario.eLoad("images/mario/mario_death", DEAD, 1);
     Mario.eLoad("images/mario/mario_st", STOP, 1);
     Mario.eLoad("images/mario/mario", STAND, 1);
     Mario.eMusic("sounds/jump.wav", JUMP);
-    Mario.ePosY = SCREEN_HEIGHT / 2 - Mario.eHeight;
-    Mario.TICK = 10;
+    Mario.ePosX = SCREEN_WIDTH / 15;
+    Mario.ePosY = GROUND_LEVEL - Mario.eHeight;
+    Mario.eAccY = GRAVITY;
+    Mario.TICK = 9.5;
+    Mario.eType = MAIN;
     Mario.render();
 }
-void loadCoin()
+void loadCoin(int i)
 {
-    Coin.eLoad("images/coin_an", MOVE, 4);
-    Coin.eMusic("sounds/coin.wav", JUMP);
-    Coin.TICK = 50;
-    Coin.ePosX = SCREEN_WIDTH / 2;
-    Coin.ePosY = SCREEN_HEIGHT / 2 - Coin.eHeight;
-    Coin.eAccY = 0.155;
-    Coin.holdLeft = 1;
-    Coin.render();
+    Coin(i) = Entity();
+    Coin(i).eLoad("images/coin_use0", MOVE, 3);
+    Coin(i).eMusic("sounds/coin.wav", JUMP);
+    Coin(i).TICK = 30; Coin(i).FadeTime = FADE_TIME;
+    Coin(i).ePosX = SCREEN_WIDTH / 4; Coin(i).ePosY = GROUND_LEVEL - 4 * Coin(i).eHeight;
+    Coin(i).eType = COLLECTABLE;
+    Coin(i).holdLeft = 1;
+    Coin(i).render();
 }
-void MarioTest()
+void loadGoombas(int i)
 {
-    bool collided = 0;
+    Goombas(i) = Entity();
+    Goombas(i).eLoad("images/goombas_", MOVE, 2);
+    Goombas(i).eLoad("images/goombas_ded", DEAD, 1);
+    Goombas(i).ePosY = GROUND_LEVEL - Goombas(1).eHeight;
+    Goombas(i).ePosX = SCREEN_WIDTH / 2;
+    Goombas(i).eVelX = -0.5;
+    Goombas(i).TICK = 50; Goombas(i).eAccY = GRAVITY;
+    Goombas(i).holdLeft = 1;
+    Goombas(i).render();
+}
+void loadTerrain()
+{
+    for (int j = 0; j < 2; j++)
+    {
+        for (int i = 1; i <= 60; i++)
+        {
+            int id = j * 60 + i;
+            Terrain(id).eLoad("images/gnd_red_1", STAND, 1);
+            Terrain(id).ePosY = SCREEN_HEIGHT - (j + 1) * Terrain(id).eHeight;
+            Terrain(id).eType = BLOCK;
+            if (i == 1) Terrain(id).ePosX = 0;
+            else Terrain(id).ePosX = Terrain(id - 1).ePosX + Terrain(id - 1).eWidth;
+        }
+    }
+}
+void Collide(Entity &chara, Entity &other)
+{
+    if (!collision(chara, other) || other.Dead || chara.Dead || other.eTexture == NULL) return;
+    if (other.eType == COLLECTABLE)
+    {
+        other.Dead = 1;
+        other.eAccY = 0.155;
+        other.eVelY = -5.5;
+        other.Fading = 255;
+        Mix_PlayChannel(-1, other.eChunk[JUMP], 0);
+    }
+    else if (other.eType == MOB)
+    {
+        if (chara.ePosY + chara.eHeight < 1.023 * other.ePosY &&
+            ((chara.ePosX + chara.eWidth >= 1.023 * other.ePosX) ||
+             (1.023 * chara.ePosX <= other.ePosX + other.eWidth)))
+                {
+                chara.eVelY = -1.5;
+                other.eVelY = -1;
+                other.Dead = 1;
+                }
+        else
+        {
+            chara.Dead = 1;
+            chara.eVelY = -4;
+        }
+    }
+}
+void start()
+{
+    loadTerrain();
+    GROUND_LEVEL = SCREEN_HEIGHT - 2 * Terrain(1).eHeight + 2;
     loadMario();
-    loadCoin();
+    for (int i = 1; i <= 5; i++)
+    {
+        loadCoin(i);
+        if (i == 1) continue;
+        Coin(i).ePosX = Coin(i - 1).ePosX + 30;
+        if (i <= 3) Coin(i).ePosY = Coin(i - 1).ePosY - 15;
+        else Coin(i).ePosY = Coin(i - 1).ePosY + 15;
+    }
+    loadGoombas(1);
     SDL_RenderPresent(renderer);
+    for (int i = 0; i < 7200; i++) renPos[i].clear();
+    for (int i = 0; i < MAX_OBJECT - 10; i++)
+    {
+        if (Object[i].eTexture == NULL) continue;
+        int k = Object[i].ePosX + Object[i].eWidth / 2;
+        renPos[k].push_back(i);
+    }
+}
+void renderMove()
+{
+    for (int i = 0; i <= MAX_OBJECT - 1; i++)
+    {
+        if (Object[i].eTexture == NULL) continue;
+        Object[i].Move();
+    }
+    Mario.Move();
+    camera.x = (Mario.ePosX + Mario.eWidth / 2) - SCREEN_WIDTH / 2;
+    camera.y = (Mario.ePosY + Mario.eHeight / 2) - SCREEN_HEIGHT / 2;
+    if (camera.x < 0) camera.x = 0;
+    if (camera.y < 0) camera.y = 0;
+    if (camera.x > LEVEL_WIDTH - camera.w) camera.x = LEVEL_WIDTH - camera.w;
+    if (camera.y > LEVEL_HEIGHT - camera.h) camera.y = LEVEL_HEIGHT - camera.h;
+}
+void allCollide()
+{
+    for (int i = 1; i <= MAX_OBJECT - 1; i++)
+    {
+        if (Object[i].eTexture == NULL) continue;
+        Collide(Mario, Object[i]);
+    }
+}
+void Test()
+{
+    start();
     SDL_Event e;
     bool quit = 0;
     while (!quit)
@@ -481,29 +593,22 @@ void MarioTest()
             {
                 quit = 1;
             }
-            Mario.handleEvent(e);
+            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN) start();
+            else Mario.handleEvent(e);
         }
-        Mario.Move();
-        Coin.Move();
+        renderMove();
+        allCollide();
         SDL_RenderClear(renderer);
+        for (int i = 0; i <= MAX_OBJECT - 1; i++) Object[i].render();
         Mario.render();
-        Coin.render();
         SDL_RenderPresent(renderer);
-        if (collision(Mario, Coin) && !collided)
-        {
-            collided = 1;
-            Coin.eVelY = -5.5;
-            Coin.Fading = 255;
-            Mix_PlayChannel(-1, Coin.eChunk[JUMP], 0);
-        }
     }
 }
 int main(int argc, char* argv[])
 {
     Mix_OpenAudio(MIX_DEFAULT_FREQUENCY, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 1024);
-    GROUND_LEVEL = SCREEN_HEIGHT / 2;
     initSDL();
-    MarioTest();
+    Test();
     quitSDL();
     return 0;
 }
