@@ -4,7 +4,7 @@
 #include "CONSTANTS.h"
 #include "INIT.h"
 #include <SDL_mixer.h>
-#define pos(_i, _j) 32 * _i, SCREEN_HEIGHT - _j * 32
+#define pos(_i, _j) 32 * (_i), SCREEN_HEIGHT - (_j) * 32
 using namespace std;
 int GROUND_LEVEL;
 SDL_Rect camera, renArea, preArea;
@@ -524,7 +524,7 @@ void Collide(Entity &chara, Entity &other)
         }
     }
 }
-void loadMario()
+void loadMario(double x, double y)
 {
     Mario = Entity();
     Mario.eLoad("images/mario/mario_move", MOVE, 3);
@@ -533,8 +533,7 @@ void loadMario()
     Mario.eLoad("images/mario/mario", STAND, 1);
     Mario.eMusic("sounds/jump.wav", JUMP);
     Mario.eMusic("sounds/death.wav", DEAD);
-    Mario.ePosX = SCREEN_WIDTH / 15;
-    Mario.ePosY = SCREEN_HEIGHT - Object[1].eHeight * 2 - Mario.eHeight;
+    Mario.setPos(x, y);
     Mario.eAccY = GRAVITY; Mario.stateY = MOVE;
     Mario.TICK = 9.5;
     Mario.eType = MAIN;
@@ -580,6 +579,18 @@ void loadTerrain(double &x, double &y, bool endOfRow, bool brick, int i)
     }
     else x += 32;
 }
+void mulTerrain(double x, double y, int _i, int _j, bool brick)
+{
+    double posX = x, posY = y;
+    for (int j = 0; j < _j; j++)
+    {
+        for (int i = 0; i < _i; i++)
+        {
+            bool eor = (i + 1 == _i);
+            loadTerrain(posX, posY, eor, brick, i);
+        }
+    }
+}
 void loadPipe(double x, double y, int h)
 {
     Object[++total] = Entity();
@@ -598,18 +609,6 @@ void loadPipe(double x, double y, int h)
         Object[total].setPos(x + 32, y + i * 32); Object[total].eType = BLOCK;
     }
 }
-void mulTerrain(double x, double y, int _i, int _j, bool brick)
-{
-    double posX = x, posY = y;
-    for (int j = 0; j < _j; j++)
-    {
-        for (int i = 0; i < _i; i++)
-        {
-            bool eor = (i + 1 == _i);
-            loadTerrain(posX, posY, eor, brick, i);
-        }
-    }
-}
 void loadLoot(double x, double y)
 {
     Object[++total] = Entity();
@@ -622,9 +621,16 @@ void loadLoot(double x, double y)
     loadCoin(x + 32 / 2 - 8, y + 3);
     Object[total].Fading = 0;
 }
-void loadBush(double x, double y, int w, int h)
+void loadBrick2(double x, double y)
 {
-
+    Object[++total] = Entity();
+    Object[total].eLoad("images/gnd_red2", STAND, 1);
+    Object[total].setPos(x, y);
+    Object[total].eType = BLOCK;
+}
+void mulBrick2(double x, double y, int h)
+{
+    for (int i = 0; i < h; i++) loadBrick2(x, y - 32 * i);
 }
 void recenter(SDL_Rect &Cam)
 {
@@ -651,7 +657,7 @@ void start()
     preArea = renArea; ground.clear(); mobVec.clear();
     mulTerrain(pos(0, 2), 63, 2, 0);
     mulTerrain(pos(65, 2), 15, 2, 0);
-    loadMario(); loadGoombas();
+    loadMario(pos(140, 3)); loadGoombas();
     loadLoot(pos(11, 6)); mulTerrain(pos(15,6), 1, 1, 1); loadLoot(pos(16,6));
     mulTerrain(pos(17, 6), 1, 1, 1); loadLoot(pos(17,10)); loadLoot(pos(18, 6));
     mulTerrain(pos(19, 6), 1, 1, 1);
@@ -659,9 +665,23 @@ void start()
     loadPipe(pos(41, 6), 3); loadPipe(pos(52, 6), 3);
     mulTerrain(pos(71, 6), 1, 1, 1); mulTerrain(pos(73, 6), 1, 1, 1);
     loadLoot(pos(72, 6)); mulTerrain(pos(74, 10), 8, 1, 1);
-    mulTerrain(pos(83, 2), 50, 2, 0); mulTerrain(pos(85, 10), 3, 1, 1);
+    mulTerrain(pos(83, 2), 64, 2, 0); mulTerrain(pos(85, 10), 3, 1, 1);
     loadLoot(pos(88, 10)); mulTerrain(pos(88, 6), 1, 1, 1); mulTerrain(pos(94, 6), 2, 1, 1);
     loadLoot(pos(100, 6)); loadLoot(pos(103, 6)); loadLoot(pos(103, 10)); loadLoot(pos(106, 6));
+    mulTerrain(pos(112, 6), 1, 1, 1); mulTerrain(pos(115, 10), 3, 1, 1);
+    mulTerrain(pos(122, 10), 1, 1, 1); mulTerrain(pos(125, 10), 1, 1, 1); mulTerrain(pos(123, 6), 2, 1, 2);
+    loadLoot(pos(123, 10)); loadLoot(pos(124, 10));
+    for (int i = 0; i < 4; i++) mulBrick2(pos(128 + i, 3), i + 1);
+    for (int i = 0; i < 4; i++) mulBrick2(pos(134 + i, 3), 4 - i);
+    for (int i = 0; i < 4; i++) mulBrick2(pos(142 + i, 3), i + 1);
+    mulBrick2(pos(146, 3), 4);
+    mulTerrain(pos(149, 2), 50, 2, 0);
+    for (int i = 0; i < 4; i++) mulBrick2(pos(149 + i, 3), 4 - i);
+    loadPipe(pos(157, 4), 2);
+    mulTerrain(pos(162, 6), 2, 1, 1); mulTerrain(pos(165, 6), 1, 1, 1); loadLoot(pos(164, 6));
+    loadPipe(pos(173, 4), 2);
+    for (int i = 0; i < 8; i++) mulBrick2(pos(175 + i, 3), i + 1);
+    mulBrick2(pos(183, 3), 8);
     SDL_RenderPresent(renderer);
     for (int i = 0; i < 7200; i++) renPos[i].clear();
     for (int i = 0; i < MAX_OBJECT - 10; i++)
@@ -669,11 +689,14 @@ void start()
         if (!Object[i].used) continue;
         Object[i].id = i;
         int k = Object[i].ePosX + Object[i].eWidth;
+        renPos[k].push_back(i);
         if (Object[i].eType == MOB) mobVec.push_back(i);
-        else if (Object[i].eType != BLOCK) stuff.insert(i);
+        else if (Object[i].eType != BLOCK)
+        {
+            if (k <= renArea.w) stuff.insert(i);
+        }
         else
         {
-            renPos[k].push_back(i);
             if (k <= renArea.w) ground.insert(i);
         }
     }
@@ -688,16 +711,32 @@ void Move()
     {
         for (int x = preArea.x; x <= renArea.x; x++)
         {
-            for (int j : renPos[x + preArea.w]) ground.insert(j);
-            for (int j : renPos[x]) ground.erase(j);
+            for (int j : renPos[x + preArea.w])
+            {
+                if (Object[j].eType == COLLECTABLE) stuff.insert(j);
+                else ground.insert(j);
+            }
+            for (int j : renPos[x])
+            {
+                if (Object[j].eType == COLLECTABLE) stuff.erase(j);
+                else ground.erase(j);
+            }
         }
     }
     else if (preArea.x > renArea.x)
     {
         for (int x = preArea.x; x >= renArea.x; x--)
         {
-            for (int j : renPos[x + preArea.w]) ground.erase(j);
-            for (int j : renPos[x]) ground.insert(j);
+            for (int j : renPos[x + preArea.w])
+            {
+                if (Object[j].eType == COLLECTABLE) stuff.erase(j);
+                else ground.erase(j);
+            }
+            for (int j : renPos[x])
+            {
+                if (Object[j].eType == COLLECTABLE) stuff.insert(j);
+                else ground.insert(j);
+            }
         }
     }
     preArea = renArea;
@@ -707,31 +746,18 @@ void Move()
 void allCollide()
 {
     Mario.stateY = 1;
-    for (unordered_set <int>::iterator it = ground.begin(); it != ground.end(); it++)
+    for (int i : ground)
     {
-        int i = *it;
         for (int j : mobVec) Collide(Object[j], Object[i]);
         Collide(Mario, Object[i]);
     }
-    for (unordered_set <int>::iterator it = stuff.begin(); it != stuff.end(); it++)
-    {
-        int i = *it;
-        Collide(Mario, Object[i]);
-    }
+    for (int i : stuff) Collide(Mario, Object[i]);
     for (int i : mobVec) Collide(Mario, Object[i]);
 }
 void allRender()
 {
-    for (unordered_set <int>::iterator it = ground.begin(); it != ground.end(); it++)
-    {
-        int i = *it;
-        Object[i].render();
-    }
-    for (unordered_set <int>::iterator it = stuff.begin(); it != stuff.end(); it++)
-    {
-        int i = *it;
-        Object[i].render();
-    }
+    for (int i : ground) Object[i].render();
+    for (int i : stuff) Object[i].render();
     for (int i : mobVec) Object[i].render();
     Mario.render();
 }
@@ -756,6 +782,7 @@ void Test()
         SDL_RenderClear(renderer);
         allRender();
         SDL_RenderPresent(renderer);
+        cout << ground.size() << " " << stuff.size() << '\n';
     }
 }
 int main(int argc, char* argv[])
