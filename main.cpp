@@ -7,7 +7,6 @@
 #define pos(_i, _j) 32 * (_i), SCREEN_HEIGHT - (_j) * 32
 using namespace std;
 int GROUND_LEVEL;
-SDL_Rect camera, renArea, preArea;
 //==========================================================================//
 //==========================================================================//
 // ================================Texture==================================//
@@ -24,8 +23,8 @@ class LTexture
         void render(int x, int y, SDL_Rect *Clip = NULL, SDL_RendererFlip flip = SDL_FLIP_NONE, int Fading = -1);
         int getWidth();
         int getHeight();
-    private:
         SDL_Texture* mTexture;
+    private:
         int mWidth;
         int mHeight;
 };
@@ -269,6 +268,11 @@ void Entity::handleEvent(SDL_Event &e)
     {
         switch(e.key.keysym.sym)
         {
+            case SDLK_ESCAPE:
+            {
+                gamePause = 1 - gamePause;
+                break;
+            }
             case SDLK_a:
                 if (Dead) break;
                 holdLeft = 1;
@@ -357,6 +361,15 @@ void Entity::Move()
         return;
     }
     eVelY += eAccY; ePosY += eVelY;
+    if (ePosY > LEVEL_HEIGHT)
+    {
+        Dead = 1;
+        if (eType == MAIN)
+        {
+            Mix_HaltChannel(1);
+            Mix_PlayChannel(-1, eChunk[DEAD], 0);
+        }
+    }
     eVelX += eAccX;
     if (abs(eVelX) > XLIMIT) eVelX = XLIMIT * abs(eVelX) / eVelX;
     ePosX += eVelX;
@@ -416,7 +429,41 @@ void Entity::render()
         eTexture[STAND][curFrame[STAND]].render(ePosX, ePosY, NULL, eFlip, fade);
     }
 }
+class Font
+{
+    public:
+        Font();
+        ~Font();
+        void loadimage(string path);
+        void render(int pos, int x, int y);
+    private:
+        LTexture font;
+};
+Font::Font()
+{
+    font = LTexture();
+}
+Font::~Font()
+{
+    font.free();
+}
+void Font::loadimage(string path)
+{
+    font.imgLoad(path);
+}
+void Font::render(int pos, int x, int y)
+{
+    SDL_Rect Clip = {pos * 8, 0, 8, 8};
+    SDL_Rect renderQuad = {x, y, 18, 18};
+    SDL_RenderCopyEx(renderer, font.mTexture, &Clip, &renderQuad, 0, NULL, RIGHT);
+}
+struct fPos
+{
+    int pos, x, y;
+};
 Entity Object[MAX_OBJECT], Mario;
+Font FONT;
+vector <fPos> Score, PlayerName, pauseText;
 bool stuck;
 bool collision(Entity A, Entity B)
 {
@@ -434,6 +481,7 @@ bool collision(Entity A, Entity B)
     if (upY_B > downY_A) return 0;
     return 1;
 }
+void addPoint(int val);
 void Collide(Entity &chara, Entity &other)
 {
     if (!collision(chara, other) || other.Dead || chara.Dead || other.eTexture == NULL) return;
@@ -451,9 +499,10 @@ void Collide(Entity &chara, Entity &other)
             ((chara.ePosX + chara.eWidth >= 1.023 * other.ePosX) ||
              (1.023 * chara.ePosX <= other.ePosX + other.eWidth)))
                 {
-                chara.eVelY = -1.5;
-                other.eVelY = -1;
-                other.Dead = 1;
+                    chara.eVelY = -1.5;
+                    other.eVelY = -1;
+                    other.Dead = 1;
+                    addPoint(1);
                 }
         else
         {
@@ -486,6 +535,7 @@ void Collide(Entity &chara, Entity &other)
                 other.holdLeft = -1;
                 if (id != -1)
                 {
+                    if (Object[id].eType == COLLECTABLE) addPoint(1);
                     Object[id].Dead = 1;
                     Object[id].eAccY = 0.155;
                     Object[id].eVelY = -5.5;
@@ -618,7 +668,7 @@ void loadLoot(double x, double y)
     Object[total].setPos(x, y);
     Object[total].holdLeft = total + 1;
     Object[total].TICK = 30;
-    loadCoin(x + 32 / 2 - 8, y + 3);
+    loadCoin(x + 32 / 2 - 8, y + 1.712);
     Object[total].Fading = 0;
 }
 void loadBrick2(double x, double y)
@@ -641,6 +691,37 @@ void recenter(SDL_Rect &Cam)
     if (Cam.x > LEVEL_WIDTH - Cam.w) Cam.x = LEVEL_WIDTH - Cam.w;
     if (Cam.y > LEVEL_HEIGHT - Cam.h) Cam.y = LEVEL_HEIGHT - Cam.h;
 }
+void statRender()
+{
+    for (auto i : PlayerName) FONT.render(i.pos, i.x, i.y);
+    for (auto i : Score) FONT.render(i.pos, i.x, i.y);
+}
+void statInit()
+{
+    Score.clear();
+    intScore.clear();
+    PlayerName.clear();
+    for (int i = 3; i < 9; i++)
+    {
+        Score.push_back({6, i * 18, 36});
+        intScore.push_back(0);
+    }
+    PlayerName.push_back({35, 3 * 18, 18}); PlayerName.push_back({23, 4 * 18, 18});
+    PlayerName.push_back({40, 5 * 18, 18}); PlayerName.push_back({31, 6 * 18, 18});
+    PlayerName.push_back({37, 7 * 18, 18});
+}
+void addPoint(int val)
+{
+    for (int i = 1; i <= val; i++)
+    {
+        int j = 3;
+        while (++intScore[j] == 10 && j) intScore[j--] = 0;
+        for (j = 0; j < 6; j++)
+        {
+            Score[j].pos = intScore[j] + 6;
+        }
+    }
+}
 void start()
 {
     Mix_HaltChannel(-1);
@@ -655,9 +736,11 @@ void start()
     camera = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
     renArea = {0, 0, int(SCREEN_WIDTH * 1.05), SCREEN_HEIGHT};
     preArea = renArea; ground.clear(); mobVec.clear();
+    statInit();
     mulTerrain(pos(0, 2), 63, 2, 0);
     mulTerrain(pos(65, 2), 15, 2, 0);
-    loadMario(pos(140, 3)); loadGoombas();
+    FONT.loadimage("images/font.bmp");
+    loadMario(pos(3.5, 3)); loadGoombas();
     loadLoot(pos(11, 6)); mulTerrain(pos(15,6), 1, 1, 1); loadLoot(pos(16,6));
     mulTerrain(pos(17, 6), 1, 1, 1); loadLoot(pos(17,10)); loadLoot(pos(18, 6));
     mulTerrain(pos(19, 6), 1, 1, 1);
@@ -680,8 +763,8 @@ void start()
     loadPipe(pos(157, 4), 2);
     mulTerrain(pos(162, 6), 2, 1, 1); mulTerrain(pos(165, 6), 1, 1, 1); loadLoot(pos(164, 6));
     loadPipe(pos(173, 4), 2);
-    for (int i = 0; i < 8; i++) mulBrick2(pos(175 + i, 3), i + 1);
-    mulBrick2(pos(183, 3), 8);
+    for (int i = 0; i < 5; i++) mulBrick2(pos(175 + i, 3), i + 1);
+    mulBrick2(pos(180, 3), 5);
     SDL_RenderPresent(renderer);
     for (int i = 0; i < 7200; i++) renPos[i].clear();
     for (int i = 0; i < MAX_OBJECT - 10; i++)
@@ -689,14 +772,11 @@ void start()
         if (!Object[i].used) continue;
         Object[i].id = i;
         int k = Object[i].ePosX + Object[i].eWidth;
-        renPos[k].push_back(i);
         if (Object[i].eType == MOB) mobVec.push_back(i);
-        else if (Object[i].eType != BLOCK)
-        {
-            if (k <= renArea.w) stuff.insert(i);
-        }
+        else if (Object[i].eType != BLOCK) stuff.insert(i);
         else
         {
+            renPos[k].push_back(i);
             if (k <= renArea.w) ground.insert(i);
         }
     }
@@ -713,13 +793,11 @@ void Move()
         {
             for (int j : renPos[x + preArea.w])
             {
-                if (Object[j].eType == COLLECTABLE) stuff.insert(j);
-                else ground.insert(j);
+                ground.insert(j);
             }
             for (int j : renPos[x])
             {
-                if (Object[j].eType == COLLECTABLE) stuff.erase(j);
-                else ground.erase(j);
+                ground.erase(j);
             }
         }
     }
@@ -729,13 +807,11 @@ void Move()
         {
             for (int j : renPos[x + preArea.w])
             {
-                if (Object[j].eType == COLLECTABLE) stuff.erase(j);
-                else ground.erase(j);
+                ground.erase(j);
             }
             for (int j : renPos[x])
             {
-                if (Object[j].eType == COLLECTABLE) stuff.insert(j);
-                else ground.insert(j);
+                ground.insert(j);
             }
         }
     }
@@ -759,11 +835,13 @@ void allRender()
     for (int i : ground) Object[i].render();
     for (int i : stuff) Object[i].render();
     for (int i : mobVec) Object[i].render();
+    statRender();
     Mario.render();
 }
 void Test()
 {
     start();
+    LTimer temp;
     SDL_Event e;
     bool quit = 0;
     while (!quit)
@@ -774,15 +852,23 @@ void Test()
             {
                 quit = 1;
             }
-            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN) start();
+            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN && !Mario.Dead && !gamePause) start();
             else Mario.handleEvent(e);
         }
-        Move();
-        allCollide();
-        SDL_RenderClear(renderer);
-        allRender();
-        SDL_RenderPresent(renderer);
-        cout << ground.size() << " " << stuff.size() << '\n';
+        if (Mario.Dead && !temp.isStarted()) temp.start();
+        if (temp.isStarted() && temp.getTicks() > 2800)
+        {
+            temp.stop();
+            start();
+        }
+        if (!gamePause)
+        {
+            Move();
+            allCollide();
+            SDL_RenderClear(renderer);
+            allRender();
+            SDL_RenderPresent(renderer);
+        }
     }
 }
 int main(int argc, char* argv[])

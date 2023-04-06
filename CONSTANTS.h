@@ -27,12 +27,15 @@ const int TERRAIN                   = 1;
 const int COIN                      = 600;
 const int GOOMB                     = 700;
 const double FADE_TIME              = 3.05;
-const double XLIMIT                 = 1.1;
+const double XLIMIT                 = 1.5;
 const double GRAVITY                = 0.025;
 const SDL_RendererFlip LEFT         = SDL_FLIP_HORIZONTAL;
 const SDL_RendererFlip RIGHT        = SDL_FLIP_NONE;
+SDL_Rect camera, renArea, preArea;;
 int total;
+bool gamePause = 0;
 vector <int> renPos[10000];
 unordered_set <int> ground, stuff;
 vector <int> mobVec;
+vector <int> intScore;
 #endif // CONSTANTS_H_INCLUDED
