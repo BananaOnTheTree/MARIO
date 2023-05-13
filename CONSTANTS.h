@@ -3,7 +3,7 @@
 using namespace std;
 const int SCREEN_WIDTH              = 800;
 const int SCREEN_HEIGHT             = 460;
-const int LEVEL_WIDTH               = 7168;
+const int LEVEL_WIDTH               = 6752;
 const int LEVEL_HEIGHT              = 460;
 const string WINDOW_TITLE           = "Mario";
 const int WALKING_ANIMATION_FRAMES  = 3;
@@ -21,21 +21,22 @@ const int BLOCK                     = 3;
 const int BG                        = 4;
 const int LOOT                      = 5;
 const int BRICK                     = 6;
+const int FLAG                      = 7;
 const int MAX_OBJECT                = 800;
 const int MAIN_CHAR                 = 0;
 const int TERRAIN                   = 1;
 const int COIN                      = 600;
 const int GOOMB                     = 700;
 const double FADE_TIME              = 3.05;
-const double XLIMIT                 = 1.5;
+const double XLIMIT                 = 1.3;
 const double GRAVITY                = 0.025;
 const SDL_RendererFlip LEFT         = SDL_FLIP_HORIZONTAL;
 const SDL_RendererFlip RIGHT        = SDL_FLIP_NONE;
-SDL_Rect camera, renArea, preArea;;
-int total;
-bool gamePause = 0;
+SDL_Rect camera, renArea, preArea, mRenArea, mPreArea; //m = Mob
+int total, flag_id, gOver;
+bool gamePause = 0, gameOverPlayed;
 vector <int> renPos[10000];
-unordered_set <int> ground, stuff;
-vector <int> mobVec;
+unordered_set <int> ground, stuff, mobVec;
 vector <int> intScore;
+string NAME = "MARIO";
 #endif // CONSTANTS_H_INCLUDED

@@ -271,6 +271,7 @@ void Entity::handleEvent(SDL_Event &e)
             case SDLK_ESCAPE:
             {
                 gamePause = 1 - gamePause;
+                //if (!gamePause) pauseRender();
                 break;
             }
             case SDLK_a:
@@ -360,7 +361,13 @@ void Entity::Move()
         stateY = 1;
         return;
     }
+    if (ePosX + 32 <= mRenArea.x || ePosX >= mRenArea.x + mRenArea.w) return;
     eVelY += eAccY; ePosY += eVelY;
+    if (eType == FLAG)
+    {
+        if (ePosY >= SCREEN_HEIGHT - 4 * 32) ePosY = SCREEN_HEIGHT - 4 * 32;
+        return;
+    }
     if (ePosY > LEVEL_HEIGHT)
     {
         Dead = 1;
@@ -429,13 +436,18 @@ void Entity::render()
         eTexture[STAND][curFrame[STAND]].render(ePosX, ePosY, NULL, eFlip, fade);
     }
 }
+//==========================================================================//
+//==========================================================================//
+// ================================Font=====================================//
+//==========================================================================//
+//==========================================================================//
 class Font
 {
     public:
         Font();
         ~Font();
         void loadimage(string path);
-        void render(int pos, int x, int y);
+        void render(int pos, int x, int y, int nX, int nY);
     private:
         LTexture font;
 };
@@ -451,10 +463,10 @@ void Font::loadimage(string path)
 {
     font.imgLoad(path);
 }
-void Font::render(int pos, int x, int y)
+void Font::render(int pos, int x, int y, int nX = 18, int nY = 18)
 {
     SDL_Rect Clip = {pos * 8, 0, 8, 8};
-    SDL_Rect renderQuad = {x, y, 18, 18};
+    SDL_Rect renderQuad = {x, y, nX, nY};
     SDL_RenderCopyEx(renderer, font.mTexture, &Clip, &renderQuad, 0, NULL, RIGHT);
 }
 struct fPos
@@ -463,8 +475,13 @@ struct fPos
 };
 Entity Object[MAX_OBJECT], Mario;
 Font FONT;
-vector <fPos> Score, PlayerName, pauseText;
+vector <fPos> Score, PlayerName, pauseText, pauseText2, gameOver;
 bool stuck;
+//==========================================================================//
+//==========================================================================//
+// ========================Handling Collision===============================//
+//==========================================================================//
+//==========================================================================//
 bool collision(Entity A, Entity B)
 {
     double leftX_A, leftX_B, rightX_A, rightX_B;
@@ -484,20 +501,23 @@ bool collision(Entity A, Entity B)
 void addPoint(int val);
 void Collide(Entity &chara, Entity &other)
 {
-    if (!collision(chara, other) || other.Dead || chara.Dead || other.eTexture == NULL) return;
-    if (other.eType == COLLECTABLE)
+    if (!collision(chara, other) || other.Dead || chara.Dead || other.eTexture == NULL || other.eType == BG || other.eType == COLLECTABLE) return;
+    /*if (other.eType == COLLECTABLE)
     {
         other.Dead = 1;
         other.eAccY = 0.155;
         other.eVelY = -5.5;
         other.Fading = 255;
+        other.eTime.start();
         Mix_PlayChannel(-1, other.eChunk[JUMP], 0);
+    }*/
+    else if (other.eType == FLAG)
+    {
+        Object[flag_id].eVelY = 1.5;
     }
     else if (other.eType == MOB)
     {
-        if (chara.ePosY + chara.eHeight < 1.023 * other.ePosY &&
-            ((chara.ePosX + chara.eWidth >= 1.023 * other.ePosX) ||
-             (1.023 * chara.ePosX <= other.ePosX + other.eWidth)))
+        if (chara.ePosY + 20 < 1.03 * other.ePosY)
                 {
                     chara.eVelY = -1.5;
                     other.eVelY = -1;
@@ -574,6 +594,11 @@ void Collide(Entity &chara, Entity &other)
         }
     }
 }
+//==========================================================================//
+//==========================================================================//
+// ===============================Loading===================================//
+//==========================================================================//
+//==========================================================================//
 void loadMario(double x, double y)
 {
     Mario = Entity();
@@ -599,13 +624,44 @@ void loadCoin(double x, double y)
     Object[total].holdLeft = 1;
     Object[total].render();
 }
-void loadGoombas()
+void loadBush(double x, double y, int l, int& temp)
+{
+    ++temp;
+    Object[++total] = Entity();
+    Object[total].eLoad("images/bush_left", STAND, 1);
+    Object[total].eType = BG;
+    Object[total].setPos(x, y);
+    for (int i = 1; i <= l; i++)
+    {
+        Object[++total] = Entity(); ++temp;
+        if (temp % 2) Object[total].eLoad("images/bush_center_1", STAND, 1);
+        else Object[total].eLoad("images/bush_center_0", STAND, 1);
+        Object[total].eType = BG;
+        Object[total].setPos(x + 32 * i, y);
+    }
+    ++temp;
+    Object[++total] = Entity();
+    Object[total].eLoad("images/bush_right", STAND, 1);
+    Object[total].eType = BG;
+    Object[total].setPos(x + 32 * (l + 1), y);
+}
+void multiBush(double x, double y, int h)
+{
+    h -= 2;
+    int temp = 0;
+    for (int i = 0; 2 * i <= h; i++) loadBush(x + 32 * i, y - 32 * i, h - 2 * i, temp);
+    Object[++total] = Entity();
+    Object[total].eLoad("images/bush_top", STAND, 1);
+    Object[total].eType = BG;
+    h = (h / 2) + 1;
+    Object[total].setPos(x + 32 * h, y - 32 * h);
+}
+void loadGoombas(double x, double y)
 {
     Object[++total] = Entity();
     Object[total].eLoad("images/goombas_", MOVE, 2);
     Object[total].eLoad("images/goombas_ded", DEAD, 1);
-    Object[total].ePosX = Object[1].eWidth * 20;
-    Object[total].ePosY = SCREEN_HEIGHT - Object[1].eHeight * 2 - Object[total].eHeight;
+    Object[total].setPos(x, y);
     Object[total].eVelX = -0.5;
     Object[total].eAccY = GRAVITY;
     Object[total].holdLeft = 1;
@@ -668,7 +724,7 @@ void loadLoot(double x, double y)
     Object[total].setPos(x, y);
     Object[total].holdLeft = total + 1;
     Object[total].TICK = 30;
-    loadCoin(x + 32 / 2 - 8, y + 1.712);
+    loadCoin(x + 32 / 2 - 8, y + 1.72);
     Object[total].Fading = 0;
 }
 void loadBrick2(double x, double y)
@@ -682,6 +738,119 @@ void mulBrick2(double x, double y, int h)
 {
     for (int i = 0; i < h; i++) loadBrick2(x, y - 32 * i);
 }
+void loadGrass(double x, double y, int h)
+{
+    Object[++total] = Entity();
+    Object[total].eLoad("images/grass_left", STAND, 1);
+    Object[total].setPos(x, y);
+    Object[total].eType = BG;
+    for (int i = 1; i <= h - 2; i++)
+    {
+        Object[++total] = Entity();
+        Object[total].eLoad("images/grass_center", STAND, 1);
+        Object[total].setPos(x + 32 * i, y);
+        Object[total].eType = BG;
+    }
+    Object[++total] = Entity();
+    Object[total].eLoad("images/grass_right", STAND, 1);
+    Object[total].eType = BG;
+    Object[total].setPos(x + (h - 1) * 32, y);
+}
+void loadFlag(double x, double y, int h)
+{
+    Object[++total] = Entity();
+    Object[total].eLoad("images/end0_flag", STAND, 1);
+    Object[total].setPos(x - 16, y - (h - 1) * 32);
+    Object[total].eType = FLAG;
+    flag_id = total;
+    for (int i = 1; i <= h; i++)
+    {
+        Object[++total] = Entity();
+        Object[total].eLoad("images/end0_l", STAND, 1);
+        Object[total].setPos(x, y);
+        Object[total].eType = FLAG;
+        y -= 32;
+    }
+    Object[++total] = Entity();
+    Object[total].eLoad("images/end0_dot", STAND, 1);
+    Object[total].setPos(x, y);
+    Object[total].eType = FLAG;
+}
+void loadCastle()
+{
+    for (int i = 0; i < 2; i++)
+    {
+        for (int j = 0; j < 2; j++)
+        {
+            Object[++total] = Entity();
+            Object[total].eLoad("images/castle0_brick", STAND, 1);
+            Object[total].setPos(pos(194 + i, 3 + j));
+            Object[total].eType = BG;
+        }
+    }
+    for (int i = 0; i < 2; i++)
+    {
+        for (int j = 0; j < 2; j++)
+        {
+            Object[++total] = Entity();
+            Object[total].eLoad("images/castle0_brick", STAND, 1);
+            Object[total].setPos(pos(197 + i, 3 + j));
+            Object[total].eType = BG;
+        }
+    }
+    Object[++total] = Entity();
+    Object[total].eLoad("images/castle0_center_center", STAND, 1);
+    Object[total].setPos(pos(196, 3));
+    Object[total].eType = BG;
+    Object[++total] = Entity();
+    Object[total].eLoad("images/castle0_center_center_top", STAND, 1);
+    Object[total].setPos(pos(196, 4));
+    Object[total].eType = BG;
+    Object[++total] = Entity();
+    Object[total].eLoad("images/castle0_top1", STAND, 1);
+    Object[total].setPos(pos(194, 5));
+    Object[total].eType = BG;
+    Object[++total] = Entity();
+    Object[total].eLoad("images/castle0_top1", STAND, 1);
+    Object[total].setPos(pos(198, 5));
+    Object[total].eType = BG;
+    for (int i = 0; i < 3; i++)
+    {
+        Object[++total] = Entity();
+        Object[total].eLoad("images/castle0_top0", STAND, 1);
+        Object[total].setPos(pos(195 + i, 5));
+        Object[total].eType = BG;
+    }
+    Object[++total] = Entity();
+    Object[total].eLoad("images/castle0_center_left", STAND, 1);
+    Object[total].setPos(pos(195, 6));
+    Object[total].eType = BG;
+    Object[++total] = Entity();
+    Object[total].eLoad("images/castle0_brick", STAND, 1);
+    Object[total].setPos(pos(196, 6));
+    Object[total].eType = BG;
+    Object[++total] = Entity();
+    Object[total].eLoad("images/castle0_center_right", STAND, 1);
+    Object[total].setPos(pos(197, 6));
+    Object[total].eType = BG;
+    for (int i = 0; i < 3; i++)
+    {
+        Object[++total] = Entity();
+        Object[total].eLoad("images/castle0_top1", STAND, 1);
+        Object[total].setPos(pos(195 + i, 7));
+        Object[total].eType = BG;
+    }
+
+}
+
+
+//End of loading stuff
+
+//==========================================================================//
+//==========================================================================//
+// =========================Camera and Font=================================//
+//==========================================================================//
+//==========================================================================//
 void recenter(SDL_Rect &Cam)
 {
     Cam.x = (Mario.ePosX + Mario.eWidth / 2) - SCREEN_WIDTH / 2;
@@ -691,12 +860,11 @@ void recenter(SDL_Rect &Cam)
     if (Cam.x > LEVEL_WIDTH - Cam.w) Cam.x = LEVEL_WIDTH - Cam.w;
     if (Cam.y > LEVEL_HEIGHT - Cam.h) Cam.y = LEVEL_HEIGHT - Cam.h;
 }
-void statRender()
+int letter(char c)
 {
-    for (auto i : PlayerName) FONT.render(i.pos, i.x, i.y);
-    for (auto i : Score) FONT.render(i.pos, i.x, i.y);
+    return c - 'A' + 23;
 }
-void statInit()
+void statInit(string NAME)
 {
     Score.clear();
     intScore.clear();
@@ -706,9 +874,52 @@ void statInit()
         Score.push_back({6, i * 18, 36});
         intScore.push_back(0);
     }
-    PlayerName.push_back({35, 3 * 18, 18}); PlayerName.push_back({23, 4 * 18, 18});
-    PlayerName.push_back({40, 5 * 18, 18}); PlayerName.push_back({31, 6 * 18, 18});
-    PlayerName.push_back({37, 7 * 18, 18});
+    int nLen = NAME.length();
+    for (int i = 0; i < nLen; i++) PlayerName.push_back({letter(toupper(NAME[i])), (3 + i) * 18, 18});
+}
+void pauseInit()
+{
+    pauseText.clear();
+    string pText = "PAUSED";
+    int nLen = pText.length();
+    for (int i = 0; i < nLen; i++) pauseText.push_back({letter(pText[i]), (i + 10) * 30 + 10, 170});
+    vector <string> text = {"PRESS", "ESC", "TO", "CONTINUE"};
+    int posX = 190;
+    for (string pText : text)
+    {
+        nLen = pText.length();
+        for (int i = 0; i < nLen; i++)
+        {
+            pauseText2.push_back({letter(pText[i]), posX, 230});
+            posX += 20;
+        }
+        posX += 20;
+    }
+}
+void statRender()
+{
+    for (auto i : PlayerName) FONT.render(i.pos, i.x, i.y);
+    for (auto i : Score) FONT.render(i.pos, i.x, i.y);
+}
+void pauseRender()
+{
+    for (auto i : pauseText) FONT.render(i.pos, i.x, i.y, 30, 30);
+    for (auto i : pauseText2) FONT.render(i.pos, i.x, i.y, 20, 20);
+}
+void loadGameOver()
+{
+    string pText = "GAME";
+    int nLen = pText.length();
+    for (int i = 0; i < nLen; i++) gameOver.push_back({letter(pText[i]), (i + 10) * 27 + 10, 190});
+    pText = "OVER";
+    int nLen1 = pText.length();
+    for (int i = 0; i < nLen1; i++) gameOver.push_back({letter(pText[i]), (i + nLen + 11) * 27 + 10, 190});
+}
+void renderGameOver()
+{
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+    statRender();
+    for (auto i : gameOver) FONT.render(i.pos, i.x, i.y, 30, 30);
 }
 void addPoint(int val)
 {
@@ -722,9 +933,15 @@ void addPoint(int val)
         }
     }
 }
+//==========================================================================//
+//==========================================================================//
+// ============================PRESS START==================================//
+//==========================================================================//
+//==========================================================================//
 void start()
 {
     Mix_HaltChannel(-1);
+    gameOverPlayed = 0;
     Mix_Chunk *music = Mix_LoadWAV("sounds/overworld.wav");
     if (music == NULL)
     {
@@ -734,13 +951,21 @@ void start()
     else Mix_PlayChannel(1, music, 0);
     total = 0;
     camera = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
-    renArea = {0, 0, int(SCREEN_WIDTH * 1.05), SCREEN_HEIGHT};
-    preArea = renArea; ground.clear(); mobVec.clear();
-    statInit();
+    renArea = {0, 0, int(SCREEN_WIDTH * 1.12), SCREEN_HEIGHT}; preArea = renArea;
+    mRenArea = {0, 0, int(SCREEN_WIDTH * 1.06), SCREEN_HEIGHT}; mPreArea = mRenArea;
+    ground.clear(); mobVec.clear();
+    statInit(NAME); pauseInit();
+    loadMario(pos(3.5, 3));
+    multiBush(pos(0, 3), 5); multiBush(pos(11, 3), 3); multiBush(pos(43, 3), 5); multiBush(pos(59, 3), 3);
+    multiBush(pos(90, 3),5); multiBush(pos(106, 3), 3); multiBush(pos(138, 3), 3); multiBush(pos(154, 3), 3);
+    multiBush(pos(183, 3), 5); multiBush(pos(200, 3), 3);
+    loadGrass(pos(6, 3), 5); loadGrass(pos(18, 3), 3); loadGrass(pos(36, 3), 4); loadGrass(pos(54, 3), 5);
+    loadGrass(pos(65, 3), 3); loadGrass(pos(83, 3), 4); loadGrass(pos(101, 3), 5); loadGrass(pos(113, 3), 3);
+    loadGrass(pos(131, 3), 4); loadGrass(pos(152, 3), 2); loadGrass(pos(198, 3), 2);
     mulTerrain(pos(0, 2), 63, 2, 0);
     mulTerrain(pos(65, 2), 15, 2, 0);
     FONT.loadimage("images/font.bmp");
-    loadMario(pos(3.5, 3)); loadGoombas();
+    loadGoombas(pos(17, 3)); loadGoombas(pos(46, 3)); loadGoombas(pos(75, 11)); loadGoombas(pos(108, 3));
     loadLoot(pos(11, 6)); mulTerrain(pos(15,6), 1, 1, 1); loadLoot(pos(16,6));
     mulTerrain(pos(17, 6), 1, 1, 1); loadLoot(pos(17,10)); loadLoot(pos(18, 6));
     mulTerrain(pos(19, 6), 1, 1, 1);
@@ -758,13 +983,14 @@ void start()
     for (int i = 0; i < 4; i++) mulBrick2(pos(134 + i, 3), 4 - i);
     for (int i = 0; i < 4; i++) mulBrick2(pos(142 + i, 3), i + 1);
     mulBrick2(pos(146, 3), 4);
-    mulTerrain(pos(149, 2), 50, 2, 0);
+    mulTerrain(pos(149, 2), 63, 2, 0);
     for (int i = 0; i < 4; i++) mulBrick2(pos(149 + i, 3), 4 - i);
-    loadPipe(pos(157, 4), 2);
+    loadPipe(pos(157, 4), 1);
     mulTerrain(pos(162, 6), 2, 1, 1); mulTerrain(pos(165, 6), 1, 1, 1); loadLoot(pos(164, 6));
-    loadPipe(pos(173, 4), 2);
+    loadPipe(pos(173, 4), 1);
     for (int i = 0; i < 5; i++) mulBrick2(pos(175 + i, 3), i + 1);
-    mulBrick2(pos(180, 3), 5);
+    mulBrick2(pos(180, 3), 5); mulBrick2(pos(190, 3), 1); loadFlag(pos(190, 4), 7);
+    loadCastle(); loadGameOver();
     SDL_RenderPresent(renderer);
     for (int i = 0; i < 7200; i++) renPos[i].clear();
     for (int i = 0; i < MAX_OBJECT - 10; i++)
@@ -772,50 +998,58 @@ void start()
         if (!Object[i].used) continue;
         Object[i].id = i;
         int k = Object[i].ePosX + Object[i].eWidth;
-        if (Object[i].eType == MOB) mobVec.push_back(i);
-        else if (Object[i].eType != BLOCK) stuff.insert(i);
-        else
+        if (Object[i].eType == MOB)
+        {
+            renPos[k].push_back(i);
+            if (k <= mRenArea.w) mobVec.insert(i);
+        }
+        else if (Object[i].eType == BLOCK || Object[i].eType == BG)
         {
             renPos[k].push_back(i);
             if (k <= renArea.w) ground.insert(i);
         }
+        else stuff.insert(i);
     }
 }
 void Move()
 {
     Mario.Move();
-    preArea = renArea;
-    recenter(camera);
-    recenter(renArea);
+    preArea = renArea; mPreArea = mRenArea;
+    recenter(camera); recenter(renArea); recenter(mRenArea);
     if (preArea.x < renArea.x)
     {
         for (int x = preArea.x; x <= renArea.x; x++)
         {
-            for (int j : renPos[x + preArea.w])
-            {
-                ground.insert(j);
-            }
-            for (int j : renPos[x])
-            {
-                ground.erase(j);
-            }
+            for (int j : renPos[x + preArea.w]) if (Object[j].eType != MOB) ground.insert(j);
+            for (int j : renPos[x]) if (Object[j].eType != MOB) ground.erase(j);
         }
     }
     else if (preArea.x > renArea.x)
     {
         for (int x = preArea.x; x >= renArea.x; x--)
         {
-            for (int j : renPos[x + preArea.w])
-            {
-                ground.erase(j);
-            }
-            for (int j : renPos[x])
-            {
-                ground.insert(j);
-            }
+            for (int j : renPos[x + preArea.w]) if (Object[j].eType != MOB) ground.erase(j);
+            for (int j : renPos[x]) if (Object[j].eType != MOB) ground.insert(j);
+
         }
     }
-    preArea = renArea;
+
+    if (mPreArea.x < mRenArea.x)
+    {
+        for (int x = mPreArea.x; x <= mRenArea.x; x++)
+        {
+            for (int j : renPos[x + mPreArea.w]) if (Object[j].eType == MOB) mobVec.insert(j);
+            for (int j : renPos[x]) if (Object[j].eType == MOB) mobVec.erase(j);
+        }
+    }
+    else if (mPreArea.x > mRenArea.x)
+    {
+        for (int x = mPreArea.x; x >= mRenArea.x; x--)
+        {
+            for (int j : renPos[x + mPreArea.w]) if (Object[j].eType == MOB) mobVec.erase(j);
+            for (int j : renPos[x]) if (Object[j].eType == MOB) mobVec.insert(j);
+        }
+    }
     for (int i : stuff) Object[i].Move();
     for (int i : mobVec) Object[i].Move();
 }
@@ -827,18 +1061,27 @@ void allCollide()
         for (int j : mobVec) Collide(Object[j], Object[i]);
         Collide(Mario, Object[i]);
     }
-    for (int i : stuff) Collide(Mario, Object[i]);
+    for (int i : stuff)
+    {
+        for (int j : mobVec) Collide(Object[j], Object[i]);
+        Collide(Mario, Object[i]);
+    }
     for (int i : mobVec) Collide(Mario, Object[i]);
 }
 void allRender()
 {
-    for (int i : ground) Object[i].render();
     for (int i : stuff) Object[i].render();
-    for (int i : mobVec) Object[i].render();
+    for (int i : ground) Object[i].render();
+    for (int i : mobVec)
+    {
+        if (Object[i].ePosY > LEVEL_HEIGHT + 3 || Object[i].eTime.getTicks() > 700) mobVec.erase(i);
+        else Object[i].render();
+    }
     statRender();
     Mario.render();
+    //cout << mobVec.size() << '\n';
 }
-void Test()
+void PressStart()
 {
     start();
     LTimer temp;
@@ -856,10 +1099,27 @@ void Test()
             else Mario.handleEvent(e);
         }
         if (Mario.Dead && !temp.isStarted()) temp.start();
-        if (temp.isStarted() && temp.getTicks() > 2800)
+        if (temp.isStarted())
         {
-            temp.stop();
-            start();
+            if (temp.getTicks() > 6600)
+            {
+                temp.stop();
+                SDL_SetRenderDrawColor(renderer, 70, 140, 235, 0);
+                start();
+            }
+            else if (temp.getTicks() > 2800)
+            {
+                if (!gameOverPlayed)
+                {
+                    Mix_Chunk *music = Mix_LoadWAV("sounds/gameover.wav");
+                    Mix_PlayChannel(-1, music, 0);
+                    gameOverPlayed = 1;
+                }
+                SDL_RenderClear(renderer);
+                renderGameOver();
+                SDL_RenderPresent(renderer);
+                continue;
+            }
         }
         if (!gamePause)
         {
@@ -867,15 +1127,18 @@ void Test()
             allCollide();
             SDL_RenderClear(renderer);
             allRender();
-            SDL_RenderPresent(renderer);
         }
+        else pauseRender();
+        SDL_RenderPresent(renderer);
     }
 }
 int main(int argc, char* argv[])
 {
+    //cout << "ENTER YOUR NAME (No spacing): ";
+    //cin >> NAME;
     Mix_OpenAudio(MIX_DEFAULT_FREQUENCY, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 1024);
     initSDL();
-    Test();
+    PressStart();
     quitSDL();
     return 0;
 }
